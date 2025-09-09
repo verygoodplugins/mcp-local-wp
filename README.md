@@ -1,34 +1,36 @@
 # MCP Server Local WP
 
-A Model Context Protocol (MCP) server that provides WordPress database access via Local by Flywheel. This server enables LLMs to inspect WordPress database schemas, query posts, users, options, and execute read-only queries on local WordPress development sites.
+A simplified Model Context Protocol (MCP) server that provides MySQL database access specifically designed for Local by Flywheel WordPress development environments. This server solves the "difficult to get working" problem of connecting MCP servers to Local's dynamic MySQL configurations.
 
-## Features
+## The Problem We Solved
 
-- **Auto-detection of Local by Flywheel sites**: Automatically detects and connects to active Local MySQL instances
-- **WordPress-specific tools**: Purpose-built tools for common WordPress operations
-- **Read-only safety**: All queries are restricted to SELECT operations for data safety
-- **Schema inspection**: Explore WordPress database structure and table relationships
-- **No hardcoded paths**: Works with any Local by Flywheel setup regardless of installation location
+When using the original [mcp-server-mysql](https://github.com/benborla/mcp-server-mysql) with Local by Flywheel, developers face several challenges:
 
-## WordPress Tools Available
+1. **Dynamic Paths**: Local by Flywheel generates unique identifiers for each site (like `lx97vbzE7`) that change when sites are restarted
+2. **Socket vs Port Confusion**: Local uses both Unix sockets and TCP ports, but the configuration can be tricky
+3. **Hardcoded Configurations**: Most setups require manual path updates every time Local restarts
 
-### Content Management
-- `wp_get_posts` - Get WordPress posts with filtering and pagination
-- `wp_get_post` - Get a specific post by ID
-- `wp_get_post_meta` - Get post meta data for a specific post
+## Our Solution
 
-### User Management
-- `wp_get_users` - Get WordPress users with optional filtering
-- `wp_get_user` - Get a specific user by ID
+This MCP server **automatically detects** your active Local by Flywheel MySQL instance by:
 
-### Site Configuration
-- `wp_get_options` - Get WordPress options (settings)
-- `wp_get_plugins` - Get information about installed plugins
-- `wp_get_theme_info` - Get information about the active theme
+1. **Process Detection**: Scans running processes to find active `mysqld` instances
+2. **Config Parsing**: Extracts MySQL configuration from the active Local site
+3. **Dynamic Connection**: Connects using the correct socket path or port automatically
+4. **Fallback Support**: Falls back to environment variables for non-Local setups
 
-### Database Operations
-- `wp_execute_query` - Execute custom read-only SQL queries
-- `wp_get_database_info` - Get WordPress database structure information
+## Tools Available
+
+### mysql_query
+Execute SQL queries against your Local by Flywheel WordPress database. Supports all standard MySQL queries with read-only safety built in.
+
+**Example Usage:**
+```sql
+SELECT * FROM wp_posts WHERE post_status = 'publish' LIMIT 5;
+SELECT option_name, option_value FROM wp_options WHERE option_name LIKE '%theme%';
+SHOW TABLES;
+DESCRIBE wp_users;
+```
 
 ## Installation
 
@@ -54,6 +56,20 @@ npm run build
 ```
 
 ## Configuration
+
+### Cursor IDE Configuration
+
+Add this to your Cursor MCP configuration file (`.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "mcp-local-wp": {
+      "command": "mcp-local-wp"
+    }
+  }
+}
+```
 
 ### Claude Desktop Configuration
 
@@ -95,118 +111,116 @@ For custom database settings or fallback configuration:
 
 ## How It Works with Local by Flywheel
 
-This MCP server was specifically designed to work seamlessly with Local by Flywheel development environments. Here's how we made it work:
+This MCP server was created because connecting to Local by Flywheel MySQL was **"kind of difficult to get working"** with existing MCP servers. Here's the story of what we solved:
 
-### 1. Auto-Detection Process
+### The Original Problem
 
-The server automatically detects active Local sites by:
+When we first tried to use [mcp-server-mysql](https://github.com/benborla/mcp-server-mysql) with Local by Flywheel, we encountered several issues:
 
-1. **Process Detection**: Scans running processes to find active `mysqld` instances
-2. **Config File Parsing**: Extracts the MySQL configuration file path from the process
-3. **Socket Path Resolution**: Determines the MySQL socket path from the Local site structure
-4. **Connection Setup**: Establishes connection using the detected socket
+1. **Dynamic Socket Paths**: Local generates paths like `/Users/.../Local/run/lx97vbzE7/mysql/mysqld.sock` where `lx97vbzE7` changes each time you restart Local
+2. **Configuration Complexity**: The original server required hardcoded paths that would break every time Local restarted
+3. **Host/Port Confusion**: Local's MySQL configuration can be tricky with both socket and TCP connections available
 
+### Our Solution Process
+
+We solved this step by step:
+
+#### 1. Process-Based Detection
+Instead of guessing paths, we scan for the actual running MySQL process:
+
+```bash
+ps aux | grep mysqld | grep -v grep
+```
+
+This finds the active MySQL instance and extracts its configuration file path.
+
+#### 2. Dynamic Path Resolution
 ```typescript
-// Example of the detection process
-function findActiveLocalSocket(): LocalSiteInfo {
-  const psOutput = execSync('ps aux | grep mysqld | grep -v grep');
-  const configMatch = psOutput.match(/--defaults-file=(.+)$/m);
-  const configPath = configMatch[1].trim();
-  
-  // Parse Local's directory structure
-  const siteDir = path.dirname(path.dirname(path.dirname(configPath)));
-  const socketPath = path.join(siteDir, 'mysql/mysqld.sock');
-  
-  return { socketPath, siteId, port };
-}
+// From the process args: --defaults-file=/Users/.../Local/run/lx97vbzE7/conf/mysql/my.cnf
+// We extract the site directory and build the socket path
+const configPath = extractFromProcess();
+const siteDir = path.dirname(path.dirname(path.dirname(configPath)));
+const socketPath = path.join(siteDir, 'mysql/mysqld.sock');
 ```
 
-### 2. Local Directory Structure Understanding
+#### 3. Automatic Configuration
+The server automatically configures itself with:
+- Correct socket path for the active Local site
+- Proper database name (`local`)
+- Default credentials (`root`/`root`)
+- Fallback to environment variables if needed
 
-Local by Flywheel organizes sites in a specific structure:
+### Why This Approach Works
+
+✅ **Restart Resilient**: Works every time you restart Local by Flywheel  
+✅ **Site Switching**: Automatically adapts if you switch between Local sites  
+✅ **Zero Maintenance**: No need to manually update paths ever again  
+✅ **Error Handling**: Provides clear error messages if MySQL isn't running  
+
+### Local Directory Structure We Handle
+
 ```
-~/Local Sites/
-└── [site-name]/
-    ├── app/
-    │   └── public/          # WordPress files
-    ├── conf/
-    │   └── mysql/
-    │       └── my.cnf       # MySQL configuration
-    └── mysql/
-        └── mysqld.sock      # MySQL socket
-```
-
-### 3. Connection Strategy
-
-The server uses Unix sockets for optimal performance with Local:
-
-```typescript
-const mysqlConfig = {
-  socketPath: '/path/to/local/site/mysql/mysqld.sock',
-  user: 'root',
-  password: 'root',
-  database: 'local',
-  multipleStatements: true
-};
+~/Library/Application Support/Local/run/
+├── lx97vbzE7/                    # Dynamic site ID (changes on restart)
+│   ├── conf/mysql/my.cnf        # We read this for port info
+│   └── mysql/mysqld.sock        # We connect via this socket
+└── WP7lolWDi/                   # Another site (if multiple running)
+    ├── conf/mysql/my.cnf
+    └── mysql/mysqld.sock
 ```
 
-### 4. Fallback Mechanism
-
-If Local detection fails, the server falls back to environment variables, making it compatible with other WordPress setups.
+The server intelligently finds the active site and connects to the right MySQL instance.
 
 ## Usage Examples
 
+Once connected, you can use the `mysql_query` tool to execute any SQL query against your Local WordPress database:
+
 ### Getting Recent Posts
 
-```typescript
-// Get the 5 most recent published posts
-wp_get_posts({
-  post_type: "post",
-  post_status: "publish",
-  limit: 5,
-  offset: 0
-})
+```sql
+SELECT ID, post_title, post_date, post_status 
+FROM wp_posts 
+WHERE post_type = 'post' AND post_status = 'publish' 
+ORDER BY post_date DESC 
+LIMIT 5;
 ```
 
-### Searching Content
+### Exploring Database Structure
 
-```typescript
-// Search for posts containing "WordPress"
-wp_get_posts({
-  search: "WordPress",
-  limit: 10
-})
+```sql
+-- See all tables
+SHOW TABLES;
+
+-- Examine a table structure
+DESCRIBE wp_posts;
+
+-- Get table info
+SHOW TABLE STATUS LIKE 'wp_%';
 ```
 
-### Inspecting Database Structure
+### WordPress-Specific Queries
 
-```typescript
-// Get all WordPress tables
-wp_get_database_info({})
+```sql
+-- Get site options
+SELECT option_name, option_value 
+FROM wp_options 
+WHERE option_name IN ('blogname', 'blogdescription', 'admin_email');
 
-// Get columns for a specific table
-wp_get_database_info({
-  table_name: "wp_posts"
-})
-```
+-- Find active plugins
+SELECT option_value 
+FROM wp_options 
+WHERE option_name = 'active_plugins';
 
-### Custom Queries
+-- Get user information
+SELECT user_login, user_email, display_name 
+FROM wp_users 
+LIMIT 10;
 
-```typescript
-// Execute a custom query
-wp_execute_query({
-  query: "SELECT post_title, post_date FROM wp_posts WHERE post_type = ? ORDER BY post_date DESC LIMIT 5",
-  params: ["post"]
-})
-```
-
-### Plugin Information
-
-```typescript
-// Get active plugins
-wp_get_plugins({
-  active_only: true
-})
+-- Post meta data
+SELECT p.post_title, pm.meta_key, pm.meta_value
+FROM wp_posts p
+JOIN wp_postmeta pm ON p.ID = pm.post_id
+WHERE p.post_type = 'post' AND pm.meta_key = '_edit_last';
 ```
 
 ## Development Setup
