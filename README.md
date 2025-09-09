@@ -37,25 +37,12 @@ DESCRIBE wp_users;
 ### Prerequisites
 
 - [Local by Flywheel](https://localwp.com/) installed and running
-- Node.js 18+ installed
 - An active Local site running
+- Node.js 18+ (for local development only)
 
-### Install via npm
+## Quick Setup (Recommended)
 
-```bash
-npm install -g @verygoodplugins/mcp-local-wp
-```
-
-### Install from source
-
-```bash
-git clone https://github.com/verygoodplugins/mcp-local-wp.git
-cd mcp-local-wp
-npm install
-npm run build
-```
-
-## Configuration
+The easiest way to get started - no installation required:
 
 ### Cursor IDE Configuration
 
@@ -65,7 +52,11 @@ Add this to your Cursor MCP configuration file (`.cursor/mcp.json`):
 {
   "mcpServers": {
     "mcp-local-wp": {
-      "command": "mcp-local-wp"
+      "command": "npx",
+      "args": [
+        "-y",
+        "@verygoodplugins/mcp-local-wp@latest"
+      ]
     }
   }
 }
@@ -82,21 +73,57 @@ Add this to your Claude Desktop configuration file:
 {
   "mcpServers": {
     "mcp-local-wp": {
-      "command": "mcp-local-wp"
+      "command": "npx",
+      "args": [
+        "-y",
+        "@verygoodplugins/mcp-local-wp@latest"
+      ]
     }
   }
 }
 ```
 
-### Advanced Configuration
+## Advanced Setup (Local Development)
 
-For custom database settings or fallback configuration:
+For customization or local development:
+
+### Install from Source
+
+```bash
+git clone https://github.com/verygoodplugins/mcp-local-wp.git
+cd mcp-local-wp
+npm install
+npm run build
+```
+
+### Local Configuration
 
 ```json
 {
   "mcpServers": {
     "mcp-local-wp": {
-      "command": "mcp-local-wp",
+      "command": "node",
+      "args": [
+        "/full/path/to/mcp-local-wp/dist/index.js"
+      ]
+    }
+  }
+}
+```
+
+### Custom Environment Variables
+
+For non-Local setups or custom configurations:
+
+```json
+{
+  "mcpServers": {
+    "mcp-local-wp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@verygoodplugins/mcp-local-wp@latest"
+      ],
       "env": {
         "MYSQL_DB": "local",
         "MYSQL_HOST": "localhost",
