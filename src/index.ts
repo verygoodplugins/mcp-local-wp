@@ -13,6 +13,13 @@ import { getLocalMySQLConfig } from './local-detector.js';
 // Load environment variables
 config();
 
+function debugLog(...args: any[]) {
+  if (process.env.DEBUG && process.env.DEBUG.includes('mcp-local-wp')) {
+    // eslint-disable-next-line no-console
+    console.error('[mcp-local-wp]', ...args);
+  }
+}
+
 // Get MySQL configuration (will auto-detect Local by Flywheel)
 let mysqlConfig;
 try {
@@ -29,8 +36,8 @@ try {
     password: process.env.MYSQL_PASS || 'root',
     database: process.env.MYSQL_DB || 'local',
     socketPath: process.env.MYSQL_SOCKET_PATH,
-    multipleStatements: true,
-    timezone: 'Z'
+    multipleStatements: false,
+    timezone: 'Z',
   };
 }
 
@@ -54,16 +61,34 @@ const server = new Server(
 const tools: Tool[] = [
   {
     name: 'mysql_query',
-    description: 'Execute SQL queries against the Local by Flywheel WordPress database',
+    description: 'Execute a read-only SQL query against the Local WordPress database',
     inputSchema: {
       type: 'object',
       properties: {
         sql: {
           type: 'string',
-          description: 'The SQL query to execute (SELECT statements only for safety)',
+          description: 'Single read-only SQL statement (SELECT/SHOW/DESCRIBE/EXPLAIN).',
+        },
+        params: {
+          type: 'array',
+          description: 'Optional parameter values for placeholders (?).',
+          items: { type: 'string' },
         },
       },
       required: ['sql'],
+    },
+  },
+  {
+    name: 'mysql_schema',
+    description: 'Inspect database schema. Without args: lists tables. With table: shows columns and indexes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        table: {
+          type: 'string',
+          description: 'Optional table name to inspect',
+        },
+      },
     },
   },
 ];
@@ -88,16 +113,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     switch (name) {
       case 'mysql_query': {
-        const sql = args.sql as string;
-        
-        // Execute the query using our read-only query method for safety
-        const result = await mysql.executeReadOnlyQuery(sql);
-
+        const sql = String(args.sql);
+        const params = Array.isArray(args.params) ? args.params : undefined;
+        debugLog('Executing mysql_query');
+        const result = await mysql.executeReadOnlyQuery(sql, params);
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify(result, null, 2) },
+          ],
+        };
+      }
+      case 'mysql_schema': {
+        const table = args.table as string | undefined;
+        if (!table) {
+          const tables = await mysql.listTables();
+          return { content: [{ type: 'text', text: JSON.stringify(tables, null, 2) }] };
+        }
+        const [columns, indexes] = await Promise.all([
+          mysql.getTableColumns(table),
+          mysql.getTableIndexes(table),
+        ]);
         return {
           content: [
             {
               type: 'text',
-              text: JSON.stringify(result, null, 2),
+              text: JSON.stringify({ table, columns, indexes }, null, 2),
             },
           ],
         };

@@ -43,16 +43,88 @@ export class MySQLClient {
     }
   }
 
-
   async executeReadOnlyQuery(sql: string, params?: any[]): Promise<any[]> {
-    // Basic safety check for read-only operations
-    const normalizedSql = sql.trim().toLowerCase();
-    const writeOperations = ['insert', 'update', 'delete', 'drop', 'create', 'alter', 'truncate'];
-    
-    if (writeOperations.some(op => normalizedSql.startsWith(op))) {
-      throw new Error('Write operations are not allowed. Only SELECT queries are permitted.');
+    const trimmed = sql.trim();
+    if (!trimmed) {
+      throw new Error('SQL is empty');
+    }
+
+    // Disallow multiple statements entirely for safety
+    if (trimmed.includes(';')) {
+      // Allow a trailing semicolon only
+      const statements = trimmed.split(';').filter(s => s.trim().length > 0);
+      if (statements.length > 1) {
+        throw new Error('Multiple statements are not allowed. Submit a single read-only query.');
+      }
+    }
+
+    const firstToken = trimmed
+      .replace(/^\/\*[\s\S]*?\*\//g, '') // strip block comments
+      .replace(/^--.*$/gm, '') // strip line comments
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)[0];
+
+    const allowed = new Set(['select', 'show', 'describe', 'desc', 'explain']);
+    if (!allowed.has(firstToken)) {
+      throw new Error('Only read-only queries are permitted (SELECT/SHOW/DESCRIBE/EXPLAIN).');
     }
 
     return await this.query(sql, params);
+  }
+
+  async listTables(): Promise<any[]> {
+    const sql = `
+      SELECT
+        TABLE_NAME AS table_name,
+        ENGINE AS engine,
+        TABLE_ROWS AS table_rows,
+        DATA_LENGTH AS data_length,
+        INDEX_LENGTH AS index_length
+      FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE'
+      ORDER BY TABLE_NAME
+    `;
+    return this.executeReadOnlyQuery(sql);
+  }
+
+  async getTableColumns(table: string): Promise<any[]> {
+    this.ensureSafeIdentifier(table);
+    const sql = `
+      SELECT
+        COLUMN_NAME AS column_name,
+        COLUMN_TYPE AS column_type,
+        DATA_TYPE AS data_type,
+        IS_NULLABLE AS is_nullable,
+        COLUMN_DEFAULT AS column_default,
+        COLUMN_KEY AS column_key,
+        EXTRA AS extra
+      FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
+      ORDER BY ORDINAL_POSITION
+    `;
+    return this.executeReadOnlyQuery(sql, [table]);
+  }
+
+  async getTableIndexes(table: string): Promise<any[]> {
+    this.ensureSafeIdentifier(table);
+    const sql = `
+      SELECT
+        INDEX_NAME AS index_name,
+        NON_UNIQUE AS non_unique,
+        SEQ_IN_INDEX AS seq_in_index,
+        COLUMN_NAME AS column_name,
+        INDEX_TYPE AS index_type
+      FROM information_schema.STATISTICS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
+      ORDER BY index_name, seq_in_index
+    `;
+    return this.executeReadOnlyQuery(sql, [table]);
+  }
+
+  private ensureSafeIdentifier(id: string) {
+    if (!/^[A-Za-z0-9_]+$/.test(id)) {
+      throw new Error('Invalid identifier. Use alphanumeric and underscore only.');
+    }
   }
 }

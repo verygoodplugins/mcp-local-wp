@@ -22,14 +22,44 @@ This MCP server **automatically detects** your active Local by Flywheel MySQL in
 ## Tools Available
 
 ### mysql_query
-Execute SQL queries against your Local by Flywheel WordPress database. Supports all standard MySQL queries with read-only safety built in.
+Execute read-only SQL against your Local WordPress database.
+
+Input fields:
+- `sql` (string): Single read-only statement (SELECT/SHOW/DESCRIBE/EXPLAIN)
+- `params` (string[]): Optional parameter values for `?` placeholders
 
 **Example Usage:**
 ```sql
-SELECT * FROM wp_posts WHERE post_status = 'publish' LIMIT 5;
+-- With parameters
+SELECT * FROM wp_posts WHERE post_status = ? ORDER BY post_date DESC LIMIT ?;
+-- params: ["publish", "5"]
+
+-- Direct queries
 SELECT option_name, option_value FROM wp_options WHERE option_name LIKE '%theme%';
 SHOW TABLES;
 DESCRIBE wp_users;
+```
+
+### mysql_schema
+Inspect database schema using INFORMATION_SCHEMA.
+
+- No args: lists tables with basic stats
+- With `table`: returns columns and indexes for that table
+
+Examples:
+
+```jsonc
+// List all tables
+{
+  "tool": "mysql_schema",
+  "args": {}
+}
+
+// Inspect a specific table
+{
+  "tool": "mysql_schema",
+  "args": { "table": "wp_posts" }
+}
 ```
 
 ## Installation
@@ -276,6 +306,15 @@ npm run dev
 
 This runs the server with TypeScript watching for changes.
 
+### Linting & Formatting
+
+- Lint: `npm run lint`
+- Fix lint: `npm run lint:fix`
+- Format: `npm run format`
+- Check formatting: `npm run format:check`
+
+Standards are unified across MCP servers via ESLint + Prettier.
+
 ## Troubleshooting
 
 ### Common Issues
@@ -312,7 +351,7 @@ export MYSQL_PASS="root"
 
 ### Debugging
 
-Enable debug logging:
+Enable debug logging by setting `DEBUG`:
 
 ```bash
 DEBUG=mcp-local-wp mcp-local-wp
@@ -320,9 +359,10 @@ DEBUG=mcp-local-wp mcp-local-wp
 
 ## Security
 
-- **Read-only operations**: All database operations are restricted to SELECT queries
-- **Local development only**: Designed specifically for local development environments
-- **No external connections**: Only connects to local MySQL instances via socket
+- **Read-only operations**: Only SELECT/SHOW/DESCRIBE/EXPLAIN are allowed
+- **Single statement**: Multiple statements in one call are blocked
+- **Local development**: Designed for local environments (Local by Flywheel)
+- **No external connections**: Prioritizes Unix socket connections when available
 
 ## Contributing
 

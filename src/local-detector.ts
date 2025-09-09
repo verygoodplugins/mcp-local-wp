@@ -3,22 +3,42 @@ import path from 'path';
 import { execSync } from 'child_process';
 import type { LocalSiteInfo } from './types.js';
 
+function debugLog(...args: any[]) {
+  if (process.env.DEBUG && process.env.DEBUG.includes('mcp-local-wp')) {
+    // eslint-disable-next-line no-console
+    console.error('[mcp-local-wp]', ...args);
+  }
+}
+
 /**
  * Detects active Local by Flywheel MySQL socket by checking running processes
  */
 export function findActiveLocalSocket(): LocalSiteInfo {
   try {
-    // Get the running mysqld process and extract the config file path
+    // Get the running mysqld processes and prefer those launched by Local
     const psOutput = execSync('ps aux | grep mysqld | grep -v grep', { encoding: 'utf8' });
-    
-    // Match everything after --defaults-file= until the end of the line (since it's the last argument)
-    const configMatch = psOutput.match(/--defaults-file=(.+)$/m);
-    
-    if (!configMatch) {
-      throw new Error('No active MySQL process found. Please start a Local site first.');
+    const lines = psOutput.split('\n').filter(Boolean);
+    debugLog('ps mysqld lines:', lines.length);
+
+    let configPath: string | undefined;
+    for (const line of lines) {
+      // Prefer a process with Local's run directory in args
+      if (!/Local\/run\//.test(line)) continue;
+      const m = line.match(/--defaults-file=(.+)$/m);
+      if (m) {
+        configPath = m[1].trim();
+        break;
+      }
+    }
+    // Fallback: take the first mysqld with a defaults-file
+    if (!configPath) {
+      const any = psOutput.match(/--defaults-file=(.+)$/m);
+      if (any) configPath = any[1].trim();
     }
     
-    const configPath = configMatch[1].trim();
+    if (!configPath) {
+      throw new Error('No active MySQL process found. Please start a Local site first.');
+    }
     
     // configPath is like: /Users/.../Local/run/SITEID/conf/mysql/my.cnf
     // We need to go up 3 levels: my.cnf -> mysql -> conf -> SITEID
@@ -36,9 +56,9 @@ export function findActiveLocalSocket(): LocalSiteInfo {
     const portMatch = configContent.match(/port\s*=\s*(\d+)/);
     const port = portMatch ? portMatch[1] : '3306';
     
-    console.error(`Found active Local site: ${siteId}`);
-    console.error(`Socket: ${socketPath}`);
-    console.error(`Port: ${port}`);
+    debugLog(`Found active Local site: ${siteId}`);
+    debugLog(`Socket: ${socketPath}`);
+    debugLog(`Port: ${port}`);
     
     return { socketPath, port, siteId, configPath };
   } catch (error: any) {
@@ -60,13 +80,13 @@ export function getLocalMySQLConfig(database?: string): {
   timezone?: string;
 } {
   const localInfo = findActiveLocalSocket();
-  
+
   return {
     socketPath: localInfo.socketPath,
     user: 'root',
     password: 'root',
     database: database || 'local',
-    multipleStatements: true,
-    timezone: 'Z'
+    multipleStatements: false,
+    timezone: 'Z',
   };
 }

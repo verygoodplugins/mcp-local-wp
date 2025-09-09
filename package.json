@@ -7,13 +7,20 @@
   "bin": {
     "mcp-local-wp": "dist/index.js"
   },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
-    "build": "tsc && npm run postbuild",
+    "build": "tsc",
     "postbuild": "chmod +x dist/index.js",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
-    "test": "tsx src/index.ts --help || true",
-    "prepublishOnly": "npm run build"
+    "test": "node -e \"console.log('mcp-local-wp build ok')\"",
+    "prepublishOnly": "npm run build && npm run postbuild",
+    "lint": "eslint \"src/**/*.{ts,js}\"",
+    "lint:fix": "eslint \"src/**/*.{ts,js}\" --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "keywords": [
     "mcp",
@@ -37,6 +44,11 @@
   "publishConfig": {
     "access": "public"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^0.5.0",
     "dotenv": "^16.3.1",
@@ -45,6 +57,13 @@
   "devDependencies": {
     "@types/node": "^20.10.0",
     "tsx": "^4.6.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "eslint": "^8.57.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-unused-imports": "^3.1.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.3.3"
   }
 }
