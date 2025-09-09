@@ -10,6 +10,43 @@ When using the original [mcp-server-mysql](https://github.com/benborla/mcp-serve
 2. **Socket vs Port Confusion**: Local uses both Unix sockets and TCP ports, but the configuration can be tricky
 3. **Hardcoded Configurations**: Most setups require manual path updates every time Local restarts
 
+Before:
+![Very Good Plugins  Cursor+Diagnose LearnDash quiz field syncing issue — wp-fusion (Workspace)  2025-09-09 at 12 34 38](https://github.com/user-attachments/assets/65da669d-8515-49ed-942c-0dd43aa29bae)
+
+```php
+$quiz_activities = $wpdb->get_results( 
+  $wpdb->prepare( 
+    'SELECT post_id, activity_meta FROM ' . esc_sql( LDLMS_DB::get_table_name( 'user_activity' ) ) . ' 
+     WHERE user_id=%d AND activity_type=%s AND activity_status=1 AND activity_completed IS NOT NULL',
+    $user_id, 
+    'quiz' 
+  ), 
+  ARRAY_A 
+);
+```
+👎
+
+After:
+![Very Good Plugins  Cursor+Diagnose LearnDash quiz field syncing issue — wp-fusion (Workspace)  2025-09-09 at 12 54 07](https://github.com/user-attachments/assets/d266d9a4-a098-4ce5-9564-0db5f8e160bd)
+
+```php
+$quiz_activities = $wpdb->get_results(
+  $wpdb->prepare(
+    'SELECT ua.post_id, ua.activity_id, uam.activity_meta_key, uam.activity_meta_value 
+     FROM ' . esc_sql( LDLMS_DB::get_table_name( 'user_activity' ) ) . ' ua
+     LEFT JOIN ' . esc_sql( LDLMS_DB::get_table_name( 'user_activity_meta' ) ) . ' uam 
+     ON ua.activity_id = uam.activity_id 
+     WHERE ua.user_id=%d AND ua.activity_type=%s AND ua.activity_completed IS NOT NULL
+     AND uam.activity_meta_key IN (%s, %s, %s)',
+    $user_id,
+    'quiz',
+    'percentage',
+    'points',
+    'total_points'
+  ),
+  ARRAY_A
+);
+```
 ## Our Solution
 
 This MCP server **automatically detects** your active Local by Flywheel MySQL instance by:
