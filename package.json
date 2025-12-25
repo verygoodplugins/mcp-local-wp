@@ -4,11 +4,12 @@
   "description": "MCP server for WordPress database access via Local by Flywheel",
   "main": "dist/index.js",
   "type": "module",
+  "mcpName": "io.github.verygoodplugins/mcp-local-wp",
   "bin": {
     "mcp-local-wp": "dist/index.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=18.0.0"
   },
   "scripts": {
     "build": "tsc",
