@@ -18,17 +18,24 @@ function debugLog(...args: any[]) {
 
 /**
  * Detects active Local by Flywheel MySQL socket by checking running processes
+ * Returns both the site info and the detection method used
  */
-export function findActiveLocalSocket(): LocalSiteInfo {
+export function findActiveLocalSocket(): {
+  siteInfo: LocalSiteInfo;
+  detectionMethod: 'process_detection' | 'filesystem_fallback';
+} {
   let processScanError: Error | undefined;
 
   try {
     const configPath = findFromProcesses();
     if (configPath) {
-      return buildSiteInfoFromConfig(configPath);
+      return {
+        siteInfo: buildSiteInfoFromConfig(configPath),
+        detectionMethod: 'process_detection',
+      };
     }
-  } catch (error: any) {
-    processScanError = error;
+  } catch (error: unknown) {
+    processScanError = error instanceof Error ? error : new Error(String(error));
   }
 
   debugLog(
@@ -36,13 +43,17 @@ export function findActiveLocalSocket(): LocalSiteInfo {
   );
 
   try {
-    return findFromFilesystem();
-  } catch (fsError: any) {
+    return {
+      siteInfo: findFromFilesystem(),
+      detectionMethod: 'filesystem_fallback',
+    };
+  } catch (fsError: unknown) {
     const messageParts = [];
     if (processScanError) {
       messageParts.push(`process scan: ${processScanError.message}`);
     }
-    messageParts.push(`filesystem scan: ${fsError.message}`);
+    const fsMessage = fsError instanceof Error ? fsError.message : String(fsError);
+    messageParts.push(`filesystem scan: ${fsMessage}`);
     throw new Error(`Error finding active Local socket (${messageParts.join(' | ')})`);
   }
 }
@@ -368,13 +379,12 @@ export function selectSite(): SiteSelectionResult {
 
   // Priority 4 & 5: Fall back to existing detection (process or filesystem)
   debugLog('No explicit site selection, falling back to auto-detection');
-  const siteInfo = findActiveLocalSocket();
+  const { siteInfo, detectionMethod } = findActiveLocalSocket();
 
   // Try to look up site metadata from sites.json
   let siteName = siteInfo.siteId;
   let sitePath = 'unknown';
   let domain = 'unknown';
-  let selectionMethod: SiteSelectionResult['selectionMethod'] = 'filesystem_fallback';
 
   try {
     const sites = loadLocalSitesConfig();
@@ -383,7 +393,6 @@ export function selectSite(): SiteSelectionResult {
       siteName = site.name;
       sitePath = normalizeSitePath(site.path);
       domain = site.domain;
-      selectionMethod = 'process_detection';
     }
   } catch {
     // sites.json not available, use defaults
@@ -394,7 +403,7 @@ export function selectSite(): SiteSelectionResult {
     siteName,
     sitePath,
     domain,
-    selectionMethod,
+    selectionMethod: detectionMethod,
   };
 }
 
