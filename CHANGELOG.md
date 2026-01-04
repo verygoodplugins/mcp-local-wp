@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.1.0](https://github.com/verygoodplugins/mcp-local-wp/compare/v1.0.1...v1.1.0) (2026-01-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* Requires ESLint 9+ for linting
+
+### Features
+
+* add CI/CD, MCP Registry, and standardization ([3b12ee8](https://github.com/verygoodplugins/mcp-local-wp/commit/3b12ee8972f855073326abe01ee317987c13f604))
+* upgrade to ESLint 9 flat config and update all dependencies ([9a2edf9](https://github.com/verygoodplugins/mcp-local-wp/commit/9a2edf9d25cfd2e37f741136fd3a725e7360b1e6))
+
+
+### Miscellaneous Chores
+
+* override release version ([7049bdf](https://github.com/verygoodplugins/mcp-local-wp/commit/7049bdfe734595c22bf24a4149bf5f937d44af2a))
+
 ## 1.1.0 - 2026-01-04
 
 ### Site Context Detection
