@@ -1,6 +1,6 @@
 {
   "name": "@verygoodplugins/mcp-local-wp",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "MCP server for WordPress database access via Local by Flywheel",
   "main": "dist/index.js",
   "type": "module",
@@ -56,15 +56,17 @@
     "mysql2": "^3.6.5"
   },
   "devDependencies": {
-    "@types/node": "^20.10.0",
-    "tsx": "^4.6.0",
-    "typescript": "^5.3.0",
-    "eslint": "^8.57.0",
-    "@typescript-eslint/parser": "^8.50.1",
+    "@eslint/js": "^9.39.2",
+    "@types/node": "^18.0.0",
     "@typescript-eslint/eslint-plugin": "^8.50.1",
-    "eslint-plugin-import": "^2.29.1",
-    "eslint-plugin-unused-imports": "^3.1.0",
-    "eslint-config-prettier": "^9.1.0",
-    "prettier": "^3.3.3"
+    "@typescript-eslint/parser": "^8.50.1",
+    "eslint": "^9.39.0",
+    "eslint-config-prettier": "^10.1.0",
+    "eslint-plugin-unused-imports": "^4.3.0",
+    "globals": "^16.0.0",
+    "prettier": "^3.7.4",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.50.1"
   }
 }

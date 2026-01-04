@@ -89,6 +89,66 @@ This MCP server **automatically detects** your active Local by Flywheel MySQL in
 3. **Dynamic Connection**: Connects using the correct socket path or port automatically
 4. **Fallback Support**: Falls back to environment variables for non-Local setups
 
+## Multi-Site Support
+
+When you have multiple Local sites, the server uses **priority-based site selection** to ensure you're always connected to the right database:
+
+### Selection Priority
+
+1. **`SITE_ID` env var** - Direct site ID (highest priority)
+2. **`SITE_NAME` env var** - Human-readable site name lookup
+3. **Working directory detection** - If your cwd is within a Local site path, that site is used
+4. **Process detection** - First running Local mysqld found
+5. **Filesystem fallback** - Most recently modified socket
+
+### Explicit Site Selection
+
+Specify which site to connect to in your MCP config:
+
+```json
+{
+  "mcpServers": {
+    "wordpress-dev": {
+      "command": "npx",
+      "args": ["-y", "@verygoodplugins/mcp-local-wp@latest"],
+      "env": {
+        "SITE_NAME": "dev"
+      }
+    }
+  }
+}
+```
+
+Or use the site ID directly:
+
+```json
+{
+  "env": {
+    "SITE_ID": "lx97vbzE7"
+  }
+}
+```
+
+### Working Directory Detection
+
+When using Claude Code or Cursor, the server automatically detects which site you're working in based on your current directory. If you're editing files in `/Users/.../Local Sites/dev/app/public/wp-content/plugins/my-plugin/`, the server connects to the "dev" site's database automatically.
+
+### Verifying Your Connection
+
+Use the `mysql_current_site` tool to see which site you're connected to:
+
+```jsonc
+{
+  "siteName": "dev",
+  "siteId": "lx97vbzE7",
+  "sitePath": "/Users/.../Local Sites/dev",
+  "domain": "dev.local",
+  "selectionMethod": "cwd_detection"
+}
+```
+
+Use `mysql_list_sites` to see all available sites and their status.
+
 ## Tools Available
 
 ### mysql_query
@@ -130,6 +190,45 @@ Examples:
   "tool": "mysql_schema",
   "args": { "table": "wp_posts" }
 }
+```
+
+### mysql_current_site
+Get information about the currently connected Local WordPress site.
+
+Returns the site name, ID, path, domain, socket path, and how the site was selected (env var, cwd detection, or auto-detection).
+
+```jsonc
+{
+  "tool": "mysql_current_site",
+  "args": {}
+}
+// Returns:
+// {
+//   "siteName": "dev",
+//   "siteId": "lx97vbzE7",
+//   "sitePath": "/Users/.../Local Sites/dev",
+//   "domain": "dev.local",
+//   "selectionMethod": "cwd_detection",
+//   "socketPath": "/Users/.../Local/run/lx97vbzE7/mysql/mysqld.sock"
+// }
+```
+
+### mysql_list_sites
+List all available Local WordPress sites and their running status.
+
+```jsonc
+{
+  "tool": "mysql_list_sites",
+  "args": {}
+}
+// Returns:
+// {
+//   "sites": [
+//     { "id": "lx97vbzE7", "name": "dev", "domain": "dev.local", "running": true },
+//     { "id": "WP7lolWDi", "name": "staging", "domain": "staging.local", "running": false }
+//   ],
+//   "currentSiteId": "lx97vbzE7"
+// }
 ```
 
 ## Installation
@@ -235,6 +334,15 @@ For non-Local setups or custom configurations:
   }
 }
 ```
+
+### Site Selection Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `SITE_ID` | Explicit site ID (highest priority) | `lx97vbzE7` |
+| `SITE_NAME` | Site name for lookup | `dev` |
+| `LOCAL_SITES_JSON` | Override path to Local's sites.json | `/custom/path/sites.json` |
+| `LOCAL_RUN_DIR` | Override Local's run directory | `/custom/run/path` |
 
 ## How It Works with Local by Flywheel
 

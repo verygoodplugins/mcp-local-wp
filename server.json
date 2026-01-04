@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
   "name": "io.github.verygoodplugins/mcp-local-wp",
   "description": "MCP server for WordPress database access via Local by Flywheel. Execute read-only MySQL queries and inspect database schema.",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/verygoodplugins/mcp-local-wp"
@@ -11,7 +11,7 @@
     {
       "registry_type": "npm",
       "identifier": "@verygoodplugins/mcp-local-wp",
-      "version": "1.0.1"
+      "version": "1.1.0"
     }
   ],
   "tools": [
@@ -22,6 +22,14 @@
     {
       "name": "mysql_schema",
       "description": "Inspect database structure via INFORMATION_SCHEMA"
+    },
+    {
+      "name": "mysql_current_site",
+      "description": "Get information about the currently connected Local WordPress site"
+    },
+    {
+      "name": "mysql_list_sites",
+      "description": "List all available Local WordPress sites and their running status"
     }
   ],
   "author": {
