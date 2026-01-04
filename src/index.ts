@@ -8,10 +8,14 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { config } from 'dotenv';
 import { MySQLClient } from './mysql-client.js';
-import { getLocalMySQLConfig } from './local-detector.js';
+import { getLocalMySQLConfig, listAvailableSites } from './local-detector.js';
+import type { SiteSelectionResult } from './types.js';
 
 // Load environment variables
 config();
+
+// Check if write operations are enabled
+const allowWrites = process.env.MYSQL_ALLOW_WRITES === 'true';
 
 function debugLog(...args: any[]) {
   if (process.env.DEBUG && process.env.DEBUG.includes('mcp-local-wp')) {
@@ -20,14 +24,30 @@ function debugLog(...args: any[]) {
   }
 }
 
+// Store site selection for the mysql_current_site tool
+let currentSiteSelection: SiteSelectionResult | undefined;
+
 // Get MySQL configuration (will auto-detect Local by Flywheel)
 let mysqlConfig;
 try {
-  mysqlConfig = getLocalMySQLConfig(process.env.MYSQL_DB);
+  const configResult = getLocalMySQLConfig(process.env.MYSQL_DB);
+  currentSiteSelection = configResult._siteSelection;
+
+  // Remove internal property before using as MySQLClient config
+  const { _siteSelection, ...cleanConfig } = configResult;
+  mysqlConfig = cleanConfig;
+
+  // Log site selection at startup
+  if (currentSiteSelection) {
+    console.error(`[mcp-local-wp] Connected to site: ${currentSiteSelection.siteName}`);
+    console.error(`[mcp-local-wp] Selection method: ${currentSiteSelection.selectionMethod}`);
+    console.error(`[mcp-local-wp] Site path: ${currentSiteSelection.sitePath}`);
+    console.error(`[mcp-local-wp] Domain: ${currentSiteSelection.domain}`);
+  }
 } catch (error: any) {
   console.error('Failed to detect Local by Flywheel configuration:', error.message);
   console.error('Falling back to environment variables...');
-  
+
   // Fallback to environment variables
   mysqlConfig = {
     host: process.env.MYSQL_HOST || 'localhost',
@@ -91,7 +111,47 @@ const tools: Tool[] = [
       },
     },
   },
+  {
+    name: 'mysql_current_site',
+    description:
+      'Get information about the currently connected Local WordPress site, including how it was selected',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'mysql_list_sites',
+    description: 'List all available Local WordPress sites and their running status',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
 ];
+
+// Conditionally add mysql_write tool when writes are enabled
+if (allowWrites) {
+  tools.push({
+    name: 'mysql_write',
+    description: 'Execute write operations (INSERT/UPDATE/DELETE) against the Local WordPress database. UPDATE and DELETE require parameterized WHERE clauses for safety.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sql: {
+          type: 'string',
+          description: 'Single write statement (INSERT/UPDATE/DELETE). Schema operations are blocked.',
+        },
+        params: {
+          type: 'array',
+          description: 'Parameter values for placeholders (?). Required for UPDATE and DELETE.',
+          items: { type: 'string' },
+        },
+      },
+      required: ['sql'],
+    },
+  });
+}
 
 // Handle list tools request
 server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -141,6 +201,99 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             },
           ],
         };
+      }
+      case 'mysql_write': {
+        if (!allowWrites) {
+          throw new Error('Write operations are disabled. Set MYSQL_ALLOW_WRITES=true to enable.');
+        }
+        const sql = String(args.sql);
+        const params = Array.isArray(args.params) ? args.params : undefined;
+        debugLog('Executing mysql_write');
+        const result = await mysql.executeWriteQuery(sql, params);
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify(result, null, 2) },
+          ],
+        };
+      }
+
+      case 'mysql_current_site': {
+        if (!currentSiteSelection) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(
+                  {
+                    error: 'No site selection information available',
+                    note: 'Using environment variables or default configuration',
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(
+                {
+                  siteName: currentSiteSelection.siteName,
+                  siteId: currentSiteSelection.siteInfo.siteId,
+                  sitePath: currentSiteSelection.sitePath,
+                  domain: currentSiteSelection.domain,
+                  selectionMethod: currentSiteSelection.selectionMethod,
+                  socketPath: currentSiteSelection.siteInfo.socketPath,
+                  port: currentSiteSelection.siteInfo.port,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      }
+
+      case 'mysql_list_sites': {
+        try {
+          const sites = listAvailableSites();
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(
+                  {
+                    sites,
+                    currentSiteId: currentSiteSelection?.siteInfo.siteId || null,
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        } catch (listError: unknown) {
+          const message = listError instanceof Error ? listError.message : String(listError);
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(
+                  {
+                    error: 'Failed to list sites',
+                    message,
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }
       }
 
       default:
