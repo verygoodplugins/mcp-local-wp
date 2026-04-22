@@ -4,23 +4,15 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 2
     groups:
-      production-dependencies:
+      npm-version-updates:
+        applies-to: version-updates
         patterns:
           - "*"
-        exclude-patterns:
-          - "@types/*"
-          - "typescript"
-          - "vitest"
-          - "eslint*"
-          - "prettier"
-      dev-dependencies:
+      npm-security-updates:
+        applies-to: security-updates
         patterns:
-          - "@types/*"
-          - "typescript"
-          - "vitest"
-          - "eslint*"
-          - "prettier"
+          - "*"
     commit-message:
       prefix: "chore(deps)"
-    open-pull-requests-limit: 10
