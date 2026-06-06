@@ -56,7 +56,7 @@ The server registers **4 tools by default**. A **5th tool, `mysql_write`, is reg
 **mysql_query**:
 - Executes read-only SQL queries
 - Parameters: `sql` (string), optional `params` (array)
-- Enforces single statement, read-only operations (SELECT/SHOW/DESCRIBE/EXPLAIN)
+- Enforces single statement, read-only operations (SELECT/SHOW/DESCRIBE/DESC/EXPLAIN)
 
 **mysql_schema**:
 - Inspects database structure via INFORMATION_SCHEMA
@@ -71,13 +71,13 @@ The server registers **4 tools by default**. A **5th tool, `mysql_write`, is reg
 
 **mysql_write** (only when `MYSQL_ALLOW_WRITES=true`):
 - Executes INSERT/UPDATE/DELETE; schema operations (CREATE/DROP/ALTER/TRUNCATE) are blocked
-- UPDATE and DELETE require parameterized WHERE clauses (non-empty `params`)
+- UPDATE and DELETE require a non-empty `params` array (at least one bound parameter); the guard does not verify that a WHERE clause is present
 - Subqueries (SELECT) are rejected inside write statements
 
 ### Security Model
 
-- **Read path**: regex validates the first token is one of SELECT/SHOW/DESCRIBE/EXPLAIN (`src/mysql-client.ts:46`)
-- **Gated write path**: writes are off unless `MYSQL_ALLOW_WRITES=true`. When enabled, only INSERT/UPDATE/DELETE are allowed; UPDATE/DELETE require parameterized WHERE clauses; subqueries are blocked (`src/mysql-client.ts:76`)
+- **Read path**: regex validates the first token is one of SELECT/SHOW/DESCRIBE/DESC/EXPLAIN (`src/mysql-client.ts:46`)
+- **Gated write path**: writes are off unless `MYSQL_ALLOW_WRITES=true`. When enabled, only INSERT/UPDATE/DELETE are allowed; UPDATE/DELETE require a non-empty `params` array (at least one bound parameter; a WHERE clause is not verified); subqueries are blocked (`src/mysql-client.ts:76`)
 - **Single statement only**: more than one non-empty statement (split on `;`) is rejected
 - **Parameter binding**: uses mysql2's parameterized queries to prevent injection
 - **Local-only design**: prioritizes Unix socket connections
