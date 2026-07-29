@@ -314,11 +314,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 // Start the server
 async function main() {
+  // Capture before any await — process.ppid is dynamic.
+  const parentPid = process.ppid;
   const transport = new StdioServerTransport();
   installStdioLifecycle({
     transport,
     onCloseAssignable: server,
     envName: 'LOCALWP_PARENT_WATCHDOG_MS',
+    parentPid,
     onShutdown: () => {
       void mysql.disconnect();
     },

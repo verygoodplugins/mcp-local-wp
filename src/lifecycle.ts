@@ -3,9 +3,14 @@
  *
  * When an intermediate wrapper (npx → npm exec → node bin → server) keeps the
  * server's stdin write-end open, a dead client never delivers EOF, so the leaf
- * sits in the event loop forever and can thrash swap (multi-GB). stdin
- * 'end'/'close', transport close, and signals all miss that orphan case. The
- * watchdog catches it by noticing the original parent is gone.
+ * sits in the event loop forever and can thrash swap (multi-GB). Soft stdin
+ * EOF alone is not enough to catch that orphan case. The watchdog catches it
+ * by noticing the original parent is gone.
+ *
+ * Soft stdin EOF is intentional: do NOT call `transport.close()` and do NOT
+ * `process.exit` on `end`/`close`. Closing the transport trips the MCP SDK
+ * `onclose` → hard exit and breaks one-shot `echo … | npm start` flows.
+ * Hard exit is reserved for parent-watchdog reparent + OS signals.
  *
  * Kept side-effect-free on import so unit tests can cover it without spawning
  * the full server.
@@ -63,15 +68,21 @@ export function startParentWatchdog(
 
 /**
  * Install stdin/transport/signal/parent-watchdog shutdown hooks.
- * Call before `server.connect(transport)`. Captures `process.ppid` immediately.
+ * Call before `server.connect(transport)`.
+ *
+ * If `main()` awaits anything before this call, pass `parentPid` captured
+ * synchronously at the top of `main()` — `process.ppid` is dynamic, and a
+ * late capture after reparent would make the watchdog a no-op (mcp-automem #137).
  */
 export function installStdioLifecycle(options: {
   transport: { close?: () => unknown };
   onCloseAssignable?: { onclose?: (() => void) | null };
   envName?: string;
   onShutdown?: () => void;
+  /** Prefer a pid captured before any `await` in `main()`. */
+  parentPid?: number;
 }): () => void {
-  const parentPid = process.ppid;
+  const parentPid = options.parentPid ?? process.ppid;
   let shuttingDown = false;
   const shutdown = (code = 0) => {
     if (shuttingDown) return;
@@ -89,8 +100,11 @@ export function installStdioLifecycle(options: {
     process.exit(code);
   };
 
-  process.stdin.on('end', () => shutdown(0));
-  process.stdin.on('close', () => shutdown(0));
+  // Soft stdin EOF → no-op. Do not transport.close() (SDK onclose → hard exit)
+  // and do not process.exit. One-shot pipes must drain in-flight handlers;
+  // orphans that keep stdin open are killed by the parent watchdog / signals.
+  process.stdin.on('end', () => {});
+  process.stdin.on('close', () => {});
   if (options.onCloseAssignable) {
     options.onCloseAssignable.onclose = () => shutdown(0);
   }
