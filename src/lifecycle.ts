@@ -38,7 +38,12 @@ export function parseWatchdogIntervalMs(raw: string | undefined): number {
 
 /**
  * Default probe: the server has been reparented away from its original parent.
- * POSIX only (Windows does not reparent orphans, so this is a no-op there).
+ *
+ * POSIX only: this relies on the kernel reparenting an orphan (to pid 1 or a
+ * subreaper) when its parent dies. Windows does not reparent orphans, so
+ * `process.ppid` never changes there and this probe never fires — the watchdog
+ * is a no-op on win32. Orphan mitigation on Windows would need a different
+ * mechanism (e.g. a job object or a stdin heartbeat). Matches mcp-automem.
  */
 export function parentReparented(parentPid: number): boolean {
   return process.ppid !== parentPid;

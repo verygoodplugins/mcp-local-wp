@@ -12,6 +12,9 @@ import { MySQLClient } from './mysql-client.js';
 import { getLocalMySQLConfig, listAvailableSites } from './local-detector.js';
 import type { SiteSelectionResult } from './types.js';
 
+// Pin before sync startup (dotenv + Local detection) — process.ppid is dynamic.
+const parentPid = process.ppid;
+
 // Load environment variables
 config();
 
@@ -314,8 +317,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 // Start the server
 async function main() {
-  // Capture before any await — process.ppid is dynamic.
-  const parentPid = process.ppid;
   const transport = new StdioServerTransport();
   installStdioLifecycle({
     transport,
