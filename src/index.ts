@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { installStdioLifecycle } from './lifecycle.js';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -314,20 +315,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 // Start the server
 async function main() {
   const transport = new StdioServerTransport();
+  installStdioLifecycle({
+    transport,
+    onCloseAssignable: server,
+    envName: 'LOCALWP_PARENT_WATCHDOG_MS',
+    onShutdown: () => {
+      void mysql.disconnect();
+    },
+  });
   await server.connect(transport);
   console.error('WordPress Local MCP Server running...');
 }
-
-// Cleanup on exit
-process.on('SIGINT', async () => {
-  await mysql.disconnect();
-  process.exit(0);
-});
-
-process.on('SIGTERM', async () => {
-  await mysql.disconnect();
-  process.exit(0);
-});
 
 main().catch((error) => {
   console.error('Server error:', error);
