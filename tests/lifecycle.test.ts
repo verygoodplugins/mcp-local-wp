@@ -24,17 +24,16 @@ describe('parseWatchdogIntervalMs', () => {
 
 describe('startParentWatchdog', () => {
   it('fires once when the probe reports parent gone', async () => {
-    mock.timers.enable({ apis: ['setInterval'] });
     let calls = 0;
-    startParentWatchdog(1, 100, () => {
+    const timer = startParentWatchdog(1, 100, () => {
       calls += 1;
     }, () => true);
     assert.equal(calls, 0);
-    mock.timers.tick(100);
+    await new Promise((r) => setTimeout(r, 150));
     assert.equal(calls, 1);
-    mock.timers.tick(500);
+    await new Promise((r) => setTimeout(r, 250));
     assert.equal(calls, 1);
-    mock.timers.reset();
+    clearInterval(timer);
   });
 });
 
