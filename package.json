@@ -16,7 +16,7 @@
     "postbuild": "chmod +x dist/index.js",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
-    "test": "node -e \"console.log('mcp-local-wp build ok')\"",
+    "test": "tsx --test tests/lifecycle.test.ts",
     "prepublishOnly": "npm run build && npm run postbuild",
     "lint": "eslint \"src/**/*.{ts,js}\"",
     "lint:fix": "eslint \"src/**/*.{ts,js}\" --fix",
