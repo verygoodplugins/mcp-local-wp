@@ -11,8 +11,11 @@ function start() {
   child.stdout.on('data', (chunk) => {
     output += chunk;
   });
-  child.stderr.resume();
-  return { child, output: () => output };
+  let errors = '';
+  child.stderr.on('data', (chunk) => {
+    errors += chunk;
+  });
+  return { child, output: () => output, ready: () => errors.includes('running on stdio') };
 }
 async function until(check: () => boolean) {
   for (let i = 0; i < 100; i++) {
@@ -57,11 +60,15 @@ test('compiled discovery has clean JSON stdout and EOF exits promptly', async ()
   }
 }, 5000);
 test('signals cleanly stop a server with an open stdin', async () => {
-  const { child } = start();
+  const { child, ready } = start();
   const exit = once(child, 'exit');
-  await new Promise((resolve) => setTimeout(resolve, 150));
-  child.kill('SIGTERM');
-  expect((await exit)[0]).toBe(0);
+  try {
+    await until(ready);
+    child.kill('SIGTERM');
+    expect((await exit)[0]).toBe(0);
+  } finally {
+    child.kill('SIGKILL');
+  }
 }, 5000);
 test.skipIf(process.platform === 'win32')(
   'parent death exits even while another process keeps stdin open',
@@ -71,14 +78,18 @@ test.skipIf(process.platform === 'win32')(
       [
         '--input-type=module',
         '-e',
-        `import {spawn} from 'node:child_process'; const server=spawn(process.execPath,[${JSON.stringify(entry)}],{stdio:['inherit','ignore','ignore'],env:{...process.env,LOCALWP_PARENT_WATCHDOG_MS:'100'}}); console.log(server.pid); setInterval(()=>{},1000);`,
+        `import {spawn} from 'node:child_process'; const server=spawn(process.execPath,[${JSON.stringify(entry)}],{stdio:['inherit','ignore','pipe'],env:{...process.env,LOCALWP_PARENT_WATCHDOG_MS:'100'}}); console.log(server.pid); server.stderr.on('data',d=>{if(d.toString().includes('running on stdio'))console.log('READY')}); setInterval(()=>{},1000);`,
       ],
       { stdio: ['pipe', 'pipe', 'pipe'] },
     );
     wrapper.stderr.resume();
+    let output = '';
+    wrapper.stdout.on('data', (chunk) => {
+      output += chunk;
+    });
     const [data] = await once(wrapper.stdout, 'data');
-    const pid = Number(String(data).trim());
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    const pid = Number(String(data).trim().split('\n')[0]);
+    await until(() => output.includes('READY'));
     const gone = once(wrapper, 'exit');
     wrapper.kill('SIGKILL');
     await gone;
