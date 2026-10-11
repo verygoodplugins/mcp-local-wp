@@ -62,7 +62,7 @@ try {
 }
 
 // Initialize MySQL client
-const mysql = new MySQLClient(mysqlConfig);
+const mysql = new MySQLClient(mysqlConfig, { allowWrites });
 
 // Create MCP server
 const server = new Server(
