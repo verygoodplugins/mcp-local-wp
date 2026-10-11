@@ -1,137 +1,130 @@
 import mysql from 'mysql2/promise';
 import type { MySQLConnectionConfig, WriteResult } from './types.js';
 
-export class MySQLClient {
-  private connection: mysql.Connection | null = null;
-  private config: MySQLConnectionConfig;
+import { validateReadSql, validateWriteSql, type SqlMode } from './sql-policy.js';
 
-  constructor(config: MySQLConnectionConfig) {
-    this.config = config;
+export class MySQLClient {
+  private readConnection: mysql.Connection | null = null;
+  private writeConnection: mysql.Connection | null = null;
+  private readConnect: Promise<mysql.Connection> | null = null;
+  private writeConnect: Promise<mysql.Connection> | null = null;
+  private readMode: SqlMode = {};
+  private writeMode: SqlMode = {};
+  private readQueue: Promise<unknown> = Promise.resolve();
+  private writeQueue: Promise<unknown> = Promise.resolve();
+
+  constructor(
+    private config: MySQLConnectionConfig,
+    private options: { allowWrites?: boolean } = {},
+  ) {}
+
+  private async open(readOnly: boolean): Promise<mysql.Connection> {
+    const connection = await mysql.createConnection({ ...this.config, multipleStatements: false });
+    try {
+      if (readOnly) await connection.query('SET SESSION TRANSACTION READ ONLY');
+      const [rows] = await connection.query<mysql.RowDataPacket[]>(
+        'SELECT @@SESSION.sql_mode AS sql_mode',
+      );
+      const modes = String(rows[0].sql_mode).split(',');
+      const mode = {
+        noBackslashEscapes: modes.includes('NO_BACKSLASH_ESCAPES'),
+        ansiQuotes: modes.includes('ANSI_QUOTES'),
+      };
+      if (readOnly) this.readMode = mode;
+      else this.writeMode = mode;
+      return connection;
+    } catch (error) {
+      connection.destroy();
+      throw error;
+    }
+  }
+
+  private async getConnection(readOnly: boolean): Promise<mysql.Connection> {
+    const existing = readOnly ? this.readConnection : this.writeConnection;
+    if (existing) return existing;
+    let pending = readOnly ? this.readConnect : this.writeConnect;
+    if (!pending) {
+      pending = this.open(readOnly)
+        .then((connection) => {
+          if (readOnly) this.readConnection = connection;
+          else this.writeConnection = connection;
+          return connection;
+        })
+        .finally(() => {
+          if (readOnly) this.readConnect = null;
+          else this.writeConnect = null;
+        });
+      if (readOnly) this.readConnect = pending;
+      else this.writeConnect = pending;
+    }
+    return pending;
   }
 
   async connect(): Promise<void> {
-    if (this.connection) {
-      return;
-    }
-
-    try {
-      this.connection = await mysql.createConnection(this.config);
-      console.error('Connected to MySQL database');
-    } catch (error: any) {
-      throw new Error(`Failed to connect to MySQL: ${error.message}`);
-    }
+    await this.getConnection(true);
   }
 
   async disconnect(): Promise<void> {
-    if (this.connection) {
-      await this.connection.end();
-      this.connection = null;
-      console.error('Disconnected from MySQL database');
-    }
-  }
-
-  async query<T = any>(sql: string, params?: any[]): Promise<T[]> {
-    if (!this.connection) {
-      throw new Error('Not connected to database');
-    }
-
-    try {
-      const [rows] = await this.connection.execute(sql, params);
-      return rows as T[];
-    } catch (error: any) {
-      throw new Error(`Query failed: ${error.message}`);
-    }
+    await Promise.allSettled([
+      this.readQueue,
+      this.writeQueue,
+      this.readConnect,
+      this.writeConnect,
+    ]);
+    const connections = [this.readConnection, this.writeConnection];
+    this.readConnection = null;
+    this.writeConnection = null;
+    await Promise.all(connections.map((connection) => connection?.end()));
   }
 
   async executeReadOnlyQuery(sql: string, params?: any[]): Promise<any[]> {
-    const trimmed = sql.trim();
-    if (!trimmed) {
-      throw new Error('SQL is empty');
-    }
-
-    // Disallow multiple statements entirely for safety
-    if (trimmed.includes(';')) {
-      // Allow a trailing semicolon only
-      const statements = trimmed.split(';').filter(s => s.trim().length > 0);
-      if (statements.length > 1) {
-        throw new Error('Multiple statements are not allowed. Submit a single read-only query.');
+    const run = async () => {
+      const connection = await this.getConnection(true);
+      validateReadSql(sql, params, this.readMode);
+      try {
+        await connection.query('START TRANSACTION READ ONLY');
+      } catch (error) {
+        connection.destroy();
+        this.readConnection = null;
+        throw error;
       }
-    }
-
-    const firstToken = trimmed
-      .replace(/^\/\*[\s\S]*?\*\//g, '') // strip block comments
-      .replace(/^--.*$/gm, '') // strip line comments
-      .trim()
-      .toLowerCase()
-      .split(/\s+/)[0];
-
-    const allowed = new Set(['select', 'show', 'describe', 'desc', 'explain']);
-    if (!allowed.has(firstToken)) {
-      throw new Error('Only read-only queries are permitted (SELECT/SHOW/DESCRIBE/EXPLAIN).');
-    }
-
-    return await this.query(sql, params);
+      return connection
+        .execute(sql, params)
+        .then(([rows]) => {
+          if (!Array.isArray(rows)) throw new Error('Read-only query did not return rows.');
+          return rows;
+        })
+        .finally(async () => {
+          try {
+            await connection.query('ROLLBACK AND NO CHAIN NO RELEASE');
+          } catch (error) {
+            connection.destroy();
+            this.readConnection = null;
+            throw error;
+          }
+        });
+    };
+    const result = this.readQueue.then(run);
+    this.readQueue = result.catch(() => {});
+    return result;
   }
 
   async executeWriteQuery(sql: string, params?: any[]): Promise<WriteResult> {
-    const trimmed = sql.trim();
-    if (!trimmed) {
-      throw new Error('SQL is empty');
-    }
-
-    // Disallow multiple statements
-    if (trimmed.includes(';')) {
-      const statements = trimmed.split(';').filter(s => s.trim().length > 0);
-      if (statements.length > 1) {
-        throw new Error('Multiple statements are not allowed. Submit a single write query.');
-      }
-    }
-
-    // Strip comments and get first token
-    const stripped = trimmed
-      .replace(/^\/\*[\s\S]*?\*\//g, '')
-      .replace(/^--.*$/gm, '')
-      .trim();
-
-    const firstToken = stripped.toLowerCase().split(/\s+/)[0];
-
-    // Only allow INSERT, UPDATE, DELETE
-    const allowed = new Set(['insert', 'update', 'delete']);
-    if (!allowed.has(firstToken)) {
-      throw new Error('Only INSERT, UPDATE, and DELETE are permitted. Schema operations (CREATE/DROP/ALTER/TRUNCATE) are blocked.');
-    }
-
-    // UPDATE and DELETE require parameterized WHERE clauses
-    if ((firstToken === 'update' || firstToken === 'delete') && (!params || params.length === 0)) {
-      throw new Error(`${firstToken.toUpperCase()} requires parameterized WHERE clause. Provide params array with at least one value.`);
-    }
-
-    // Block subqueries for safety
-    if (/\bselect\b/i.test(stripped)) {
-      throw new Error('Subqueries (SELECT) are not allowed in write operations.');
-    }
-
-    if (!this.connection) {
-      throw new Error('Not connected to database');
-    }
-
-    try {
-      const [result] = await this.connection.execute(sql, params);
-      const resultInfo = result as mysql.ResultSetHeader;
-      const writeResult: WriteResult = {
-        affectedRows: resultInfo.affectedRows,
-      };
-      if (resultInfo.insertId) {
-        writeResult.insertId = resultInfo.insertId;
-      }
-      // changedRows is deprecated in mysql2 types but still returned by MySQL
-      if ('changedRows' in resultInfo && resultInfo.changedRows !== undefined) {
-        writeResult.changedRows = resultInfo.changedRows as number;
-      }
-      return writeResult;
-    } catch (error: any) {
-      throw new Error(`Write query failed: ${error.message}`);
-    }
+    if (!this.options.allowWrites) throw new Error('Write operations are disabled.');
+    const run = async () => {
+      const connection = await this.getConnection(false);
+      validateWriteSql(sql, params, this.writeMode);
+      const [result] = await connection.execute(sql, params);
+      const info = result as mysql.ResultSetHeader;
+      const output: WriteResult = { affectedRows: info.affectedRows };
+      if (info.insertId) output.insertId = info.insertId;
+      if ('changedRows' in info && info.changedRows !== undefined)
+        output.changedRows = info.changedRows as number;
+      return output;
+    };
+    const result = this.writeQueue.then(run);
+    this.writeQueue = result.catch(() => {});
+    return result;
   }
 
   async listTables(): Promise<any[]> {

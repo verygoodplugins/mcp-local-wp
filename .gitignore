@@ -111,3 +111,5 @@ public
 tmp/
 temp/
 /screenshots
+# MCP Registry authentication files
+.mcpregistry_*token

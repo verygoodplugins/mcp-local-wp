@@ -456,8 +456,8 @@ export function getLocalMySQLConfig(database?: string): {
 
   return {
     socketPath: selection.siteInfo.socketPath,
-    user: 'root',
-    password: 'root',
+    user: process.env.MYSQL_USER || 'root',
+    password: process.env.MYSQL_PASS ?? 'root',
     database: database || 'local',
     multipleStatements: false,
     timezone: 'Z',
