@@ -78,3 +78,10 @@ test('writes require placeholders in an actual WHERE predicate', () => {
   ] as [string, unknown[]][])
     assert.throws(() => validateWriteSql(sql, params));
 });
+
+test('writes reject placeholder-only and constant tautological predicates', () => {
+  for (const sql of ['DELETE FROM wp_users WHERE ?', 'DELETE FROM wp_users WHERE 1=?', 'UPDATE wp_users SET ID=2 WHERE ID=? OR 1', 'DELETE FROM wp_users WHERE ID=? OR ?']) {
+    assert.throws(() => validateWriteSql(sql, sql.match(/\?/g)?.map(() => 1)));
+  }
+  validateWriteSql('DELETE FROM wp_users WHERE (ID=? OR ID IN (?,?)) AND ID BETWEEN ? AND ?', [1,2,3,4,5]);
+});

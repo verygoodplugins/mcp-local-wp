@@ -128,6 +128,57 @@ export function validateReadSql(sql: string, params?: unknown[], mode?: SqlMode)
   validateParameters(tokens, params);
 }
 
+/** Restrict write predicates to column comparisons with bound values, joined by AND/OR. */
+function validateWritePredicate(tokens: Token[]): void {
+  let i = 0;
+  const invalid = () => { throw new Error('WHERE requires column comparisons to bound values, joined by AND/OR.'); };
+  const identifier = () => {
+    const token = tokens[i];
+    if (!token || !(token.kind === 'quoted' || (token.kind === 'word' && /^[A-Z_$]/.test(token.value) && !['TRUE', 'FALSE', 'NULL'].includes(token.value)))) invalid();
+    i++;
+    if (tokens[i]?.value === '.') {
+      i++;
+      const column = tokens[i];
+      if (!column || !(column.kind === 'quoted' || (column.kind === 'word' && /^[A-Z_$]/.test(column.value)))) invalid();
+      i++;
+    }
+  };
+  const parameter = () => { if (tokens[i++]?.kind !== 'parameter') invalid(); };
+  const predicate = (): void => {
+    if (tokens[i]?.value === '(') {
+      i++;
+      expression();
+      if (tokens[i++]?.value !== ')') invalid();
+      return;
+    }
+    identifier();
+    const operator = tokens[i++]?.value;
+    if (operator === 'IN') {
+      if (tokens[i++]?.value !== '(') invalid();
+      parameter();
+      while (tokens[i]?.value === ',') { i++; parameter(); }
+      if (tokens[i++]?.value !== ')') invalid();
+    } else if (operator === 'BETWEEN') {
+      parameter();
+      if (tokens[i++]?.value !== 'AND') invalid();
+      parameter();
+    } else {
+      if (!['=', '<', '>', '!', 'LIKE'].includes(operator ?? '')) invalid();
+      if (['<', '>', '!'].includes(operator ?? '') && ['=', '>'].includes(tokens[i]?.value)) {
+        i++;
+        if (operator === '<' && tokens[i - 1]?.value === '=' && tokens[i]?.value === '>') i++;
+      }
+      parameter();
+    }
+  };
+  const expression = (): void => {
+    predicate();
+    while (['AND', 'OR'].includes(tokens[i]?.value)) { i++; predicate(); }
+  };
+  expression();
+  if (i !== tokens.length) invalid();
+}
+
 export function validateWriteSql(sql: string, params?: unknown[], mode?: SqlMode): void {
   const tokens = tokenizeSql(sql, mode);
   const first = tokens[0];
@@ -154,6 +205,7 @@ export function validateWriteSql(sql: string, params?: unknown[], mode?: SqlMode
     if (where < 0 || !predicate.some((t) => t.kind === 'parameter')) {
       throw new Error(`${first.value} requires a parameterized WHERE clause.`);
     }
+    validateWritePredicate(predicate);
   }
   validateParameters(tokens, params);
 }
