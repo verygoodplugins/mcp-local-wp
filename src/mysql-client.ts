@@ -77,7 +77,10 @@ export class MySQLClient {
     await Promise.all(connections.map((connection) => connection?.end()));
   }
 
-  async executeReadOnlyQuery(sql: string, params?: any[]): Promise<any[]> {
+  async executeReadOnlyQuery(
+    sql: string,
+    params?: Array<string | number | boolean | null>,
+  ): Promise<Record<string, unknown>[]> {
     const run = async () => {
       const connection = await this.getConnection(true);
       validateReadSql(sql, params, this.readMode);
@@ -92,7 +95,7 @@ export class MySQLClient {
         .execute(sql, params)
         .then(([rows]) => {
           if (!Array.isArray(rows)) throw new Error('Read-only query did not return rows.');
-          return rows;
+          return rows as Record<string, unknown>[];
         })
         .finally(async () => {
           try {
@@ -109,7 +112,10 @@ export class MySQLClient {
     return result;
   }
 
-  async executeWriteQuery(sql: string, params?: any[]): Promise<WriteResult> {
+  async executeWriteQuery(
+    sql: string,
+    params?: Array<string | number | boolean | null>,
+  ): Promise<WriteResult> {
     if (!this.options.allowWrites) throw new Error('Write operations are disabled.');
     const run = async () => {
       const connection = await this.getConnection(false);
@@ -127,7 +133,7 @@ export class MySQLClient {
     return result;
   }
 
-  async listTables(): Promise<any[]> {
+  async listTables(): Promise<Record<string, unknown>[]> {
     const sql = `
       SELECT
         TABLE_NAME AS table_name,
@@ -142,7 +148,7 @@ export class MySQLClient {
     return this.executeReadOnlyQuery(sql);
   }
 
-  async getTableColumns(table: string): Promise<any[]> {
+  async getTableColumns(table: string): Promise<Record<string, unknown>[]> {
     this.ensureSafeIdentifier(table);
     const sql = `
       SELECT
@@ -160,7 +166,7 @@ export class MySQLClient {
     return this.executeReadOnlyQuery(sql, [table]);
   }
 
-  async getTableIndexes(table: string): Promise<any[]> {
+  async getTableIndexes(table: string): Promise<Record<string, unknown>[]> {
     this.ensureSafeIdentifier(table);
     const sql = `
       SELECT

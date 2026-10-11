@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import { validateReadSql, validateWriteSql } from '../src/sql-policy.js';
 
@@ -38,8 +38,8 @@ for (const sql of [
   'SELECT 1 INTO OUTFILE "/tmp/file"',
   'SELECT 1 INTO DUMPFILE "/tmp/file"',
   'SELECT 1 INTO @x',
-  'SELECT 1 # hidden\r INTO OUTFILE \"/tmp/file\"',
-  'SELECT `GET_LOCK`(\"x\",0)',
+  'SELECT 1 # hidden\r INTO OUTFILE "/tmp/file"',
+  'SELECT `GET_LOCK`("x",0)',
   'EXPLAIN ANALYZE SELECT 1',
   'SELECT 1 FOR UPDATE',
   'SELECT 1 FOR SHARE',
@@ -47,6 +47,9 @@ for (const sql of [
   "SELECT GET_LOCK('x',0)",
   "SELECT RELEASE_LOCK('x')",
   'SELECT RELEASE_ALL_LOCKS()',
+  'SELECT service_get_write_locks("namespace","name",60)',
+  'SELECT SERVICE_GET_READ_LOCKS("namespace","name",60)',
+  'SELECT service_release_locks("namespace")',
 ]) {
   test(`rejects unsafe read: ${sql}`, () => assert.throws(() => validateReadSql(sql)));
 }
@@ -77,4 +80,24 @@ test('writes require placeholders in an actual WHERE predicate', () => {
     ['/*! DROP TABLE wp_users */ INSERT INTO wp_users VALUES (?)', [1]],
   ] as [string, unknown[]][])
     assert.throws(() => validateWriteSql(sql, params));
+});
+
+test('writes reject placeholder-only and constant tautological predicates', () => {
+  for (const sql of [
+    'DELETE FROM wp_users WHERE ?',
+    'DELETE FROM wp_users WHERE 1=?',
+    'UPDATE wp_users SET ID=2 WHERE ID=? OR 1',
+    'DELETE FROM wp_users WHERE ID=? OR ?',
+  ]) {
+    assert.throws(() =>
+      validateWriteSql(
+        sql,
+        sql.match(/\?/g)?.map(() => 1),
+      ),
+    );
+  }
+  validateWriteSql(
+    'DELETE FROM wp_users WHERE (ID=? OR ID IN (?,?)) AND ID BETWEEN ? AND ?',
+    [1, 2, 3, 4, 5],
+  );
 });

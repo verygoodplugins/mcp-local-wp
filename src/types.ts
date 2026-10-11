@@ -55,9 +55,5 @@ export interface SiteSelectionResult {
   sitePath: string;
   domain: string;
   selectionMethod:
-    | 'env_site_id'
-    | 'env_site_name'
-    | 'cwd_detection'
-    | 'process_detection'
-    | 'filesystem_fallback';
+    'env_site_id' | 'env_site_name' | 'cwd_detection' | 'process_detection' | 'filesystem_fallback';
 }

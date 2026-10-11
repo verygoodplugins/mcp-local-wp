@@ -1,17 +1,22 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.verygoodplugins/mcp-local-wp",
-  "description": "MCP server for WordPress database access via Local by Flywheel. Execute read-only MySQL queries and inspect database schema.",
+  "title": "MCP Local WP",
+  "description": "WordPress database access via Local by Flywheel. Execute read-only MySQL queries and inspect schema.",
   "version": "1.1.0",
+  "websiteUrl": "https://verygoodplugins.com/?utm_source=mcp-registry",
   "repository": {
-    "type": "git",
-    "url": "https://github.com/verygoodplugins/mcp-local-wp"
+    "url": "https://github.com/verygoodplugins/mcp-local-wp",
+    "source": "github"
   },
   "packages": [
     {
-      "registry_type": "npm",
+      "registryType": "npm",
       "identifier": "@verygoodplugins/mcp-local-wp",
-      "version": "1.1.0"
+      "version": "1.1.0",
+      "transport": {
+        "type": "stdio"
+      }
     }
   ],
   "tools": [
@@ -31,9 +36,5 @@
       "name": "mysql_list_sites",
       "description": "List all available Local WordPress sites and their running status"
     }
-  ],
-  "author": {
-    "name": "Very Good Plugins",
-    "url": "https://verygoodplugins.com/?utm_source=mcp-registry"
-  }
+  ]
 }
