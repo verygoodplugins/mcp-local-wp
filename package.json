@@ -9,19 +9,21 @@
     "mcp-local-wp": "dist/index.js"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=24.0.0"
   },
   "scripts": {
-    "build": "tsc",
-    "postbuild": "chmod +x dist/index.js",
+    "build": "tsc && chmod +x dist/index.js",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
-    "test": "node -e \"console.log('mcp-local-wp build ok')\"",
-    "prepublishOnly": "npm run build && npm run postbuild",
-    "lint": "eslint \"src/**/*.{ts,js}\"",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build && npm test",
+    "lint": "eslint src/ tests/",
     "lint:fix": "eslint \"src/**/*.{ts,js}\" --fix",
-    "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format": "prettier --write src/ tests/",
+    "format:check": "prettier --check src/ tests/",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "keywords": [
     "mcp",
@@ -46,27 +48,28 @@
     "access": "public"
   },
   "files": [
-    "dist",
+    "dist/",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.25.1",
+    "@modelcontextprotocol/server": "^2.3.1",
     "dotenv": "^17.2.3",
-    "mysql2": "^3.6.5"
+    "mysql2": "^3.24.5",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@eslint/js": "^9.18.0",
-    "@types/node": "^22.10.5",
-    "@typescript-eslint/eslint-plugin": "^8.50.1",
-    "@typescript-eslint/parser": "^8.50.1",
-    "eslint": "^9.18.0",
-    "eslint-config-prettier": "^10.0.1",
-    "eslint-plugin-unused-imports": "^4.3.0",
-    "globals": "^16.0.0",
-    "prettier": "^3.4.2",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.3",
-    "typescript-eslint": "^8.20.0"
+    "@eslint/js": "^10.0.1",
+    "@modelcontextprotocol/client": "^2.3.1",
+    "@types/node": "^24.0.0",
+    "@vitest/coverage-v8": "^4.1.10",
+    "eslint": "^10.8.1",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.5.3",
+    "tsx": "^4.19.4",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.67.0",
+    "vitest": "^4.1.10"
   }
 }

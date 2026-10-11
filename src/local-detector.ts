@@ -9,9 +9,8 @@ import type {
   SiteSelectionResult,
 } from './types.js';
 
-function debugLog(...args: any[]) {
+function debugLog(...args: unknown[]) {
   if (process.env.DEBUG && process.env.DEBUG.includes('mcp-local-wp')) {
-    // eslint-disable-next-line no-console
     console.error('[mcp-local-wp]', ...args);
   }
 }
@@ -38,9 +37,7 @@ export function findActiveLocalSocket(): {
     processScanError = error instanceof Error ? error : new Error(String(error));
   }
 
-  debugLog(
-    'Process detection failed or no Local mysqld found. Falling back to filesystem scan.'
-  );
+  debugLog('Process detection failed or no Local mysqld found. Falling back to filesystem scan.');
 
   try {
     return {
@@ -54,7 +51,9 @@ export function findActiveLocalSocket(): {
     }
     const fsMessage = fsError instanceof Error ? fsError.message : String(fsError);
     messageParts.push(`filesystem scan: ${fsMessage}`);
-    throw new Error(`Error finding active Local socket (${messageParts.join(' | ')})`);
+    throw new Error(`Error finding active Local socket (${messageParts.join(' | ')})`, {
+      cause: fsError,
+    });
   }
 }
 
@@ -104,8 +103,7 @@ function findFromFilesystem(): LocalSiteInfo {
       configPath: path.join(siteDir, 'conf/mysql/my.cnf'),
     }))
     .filter(
-      (candidate) =>
-        fs.existsSync(candidate.socketPath) && fs.existsSync(candidate.configPath)
+      (candidate) => fs.existsSync(candidate.socketPath) && fs.existsSync(candidate.configPath),
     )
     .map((candidate) => ({
       ...candidate,
@@ -210,9 +208,7 @@ function getSitesJsonPath(): string {
     }
   }
 
-  throw new Error(
-    'Local sites.json not found. Set LOCAL_SITES_JSON env var to specify the path.'
-  );
+  throw new Error('Local sites.json not found. Set LOCAL_SITES_JSON env var to specify the path.');
 }
 
 /**
@@ -282,7 +278,7 @@ export function buildSiteInfoFromEntry(site: LocalSiteEntry & { id: string }): L
     throw new Error(
       `Site "${site.name}" (${site.id}) is not running. ` +
         `Expected socket at: ${socketPath}. ` +
-        `Please start the site in Local by Flywheel.`
+        `Please start the site in Local by Flywheel.`,
     );
   }
 
@@ -322,7 +318,7 @@ export function selectSite(): SiteSelectionResult {
     if (!site) {
       const availableIds = Object.keys(sites).join(', ');
       throw new Error(
-        `Site ID "${siteIdEnv}" not found in Local configuration. Available IDs: ${availableIds}`
+        `Site ID "${siteIdEnv}" not found in Local configuration. Available IDs: ${availableIds}`,
       );
     }
     const siteWithId = { ...site, id: siteIdEnv } as LocalSiteEntry & { id: string };
@@ -345,9 +341,7 @@ export function selectSite(): SiteSelectionResult {
       const availableNames = Object.values(sites)
         .map((s) => s.name)
         .join(', ');
-      throw new Error(
-        `Site name "${siteNameEnv}" not found. Available sites: ${availableNames}`
-      );
+      throw new Error(`Site name "${siteNameEnv}" not found. Available sites: ${availableNames}`);
     }
     return {
       siteInfo: buildSiteInfoFromEntry(site),
@@ -456,8 +450,8 @@ export function getLocalMySQLConfig(database?: string): {
 
   return {
     socketPath: selection.siteInfo.socketPath,
-    user: 'root',
-    password: 'root',
+    user: process.env.MYSQL_USER || 'root',
+    password: process.env.MYSQL_PASS ?? 'root',
     database: database || 'local',
     multipleStatements: false,
     timezone: 'Z',
