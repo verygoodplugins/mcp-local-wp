@@ -38,8 +38,8 @@ for (const sql of [
   'SELECT 1 INTO OUTFILE "/tmp/file"',
   'SELECT 1 INTO DUMPFILE "/tmp/file"',
   'SELECT 1 INTO @x',
-  'SELECT 1 # hidden\r INTO OUTFILE \"/tmp/file\"',
-  'SELECT `GET_LOCK`(\"x\",0)',
+  'SELECT 1 # hidden\r INTO OUTFILE "/tmp/file"',
+  'SELECT `GET_LOCK`("x",0)',
   'EXPLAIN ANALYZE SELECT 1',
   'SELECT 1 FOR UPDATE',
   'SELECT 1 FOR SHARE',
@@ -47,6 +47,9 @@ for (const sql of [
   "SELECT GET_LOCK('x',0)",
   "SELECT RELEASE_LOCK('x')",
   'SELECT RELEASE_ALL_LOCKS()',
+  'SELECT service_get_write_locks("namespace","name",60)',
+  'SELECT SERVICE_GET_READ_LOCKS("namespace","name",60)',
+  'SELECT service_release_locks("namespace")',
 ]) {
   test(`rejects unsafe read: ${sql}`, () => assert.throws(() => validateReadSql(sql)));
 }

@@ -119,7 +119,7 @@ export function validateReadSql(sql: string, params?: unknown[], mode?: SqlMode)
       throw new Error('Locking reads are not permitted.');
     }
     if (
-      ['GET_LOCK', 'RELEASE_LOCK', 'RELEASE_ALL_LOCKS'].includes(functionName) &&
+      ['GET_LOCK', 'RELEASE_LOCK', 'RELEASE_ALL_LOCKS', 'SERVICE_GET_READ_LOCKS', 'SERVICE_GET_WRITE_LOCKS', 'SERVICE_RELEASE_LOCKS'].includes(functionName) &&
       tokens[i + 1]?.value === '('
     ) {
       throw new Error('Advisory lock functions are not permitted.');
