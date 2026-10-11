@@ -86,6 +86,7 @@ test('writes reject placeholder-only and constant tautological predicates', () =
   for (const sql of [
     'DELETE FROM wp_users WHERE ?',
     'DELETE FROM wp_users WHERE 1=?',
+    'DELETE FROM wp_users WHERE ID >> ?',
     'UPDATE wp_users SET ID=2 WHERE ID=? OR 1',
     'DELETE FROM wp_users WHERE ID=? OR ?',
   ]) {

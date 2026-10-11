@@ -190,11 +190,10 @@ function validateWritePredicate(tokens: Token[]): void {
       if (tokens[i++]?.value !== 'AND') invalid();
       parameter();
     } else {
-      if (!['=', '<', '>', '!', 'LIKE'].includes(operator ?? '')) invalid();
-      if (['<', '>', '!'].includes(operator ?? '') && ['=', '>'].includes(tokens[i]?.value)) {
-        i++;
-        if (operator === '<' && tokens[i - 1]?.value === '=' && tokens[i]?.value === '>') i++;
-      }
+      let comparison = operator ?? '';
+      while (tokens[i]?.kind === 'symbol' && ['=', '<', '>'].includes(tokens[i].value))
+        comparison += tokens[i++].value;
+      if (!['=', '<', '>', '<=', '>=', '<>', '!=', '<=>', 'LIKE'].includes(comparison)) invalid();
       parameter();
     }
   };
