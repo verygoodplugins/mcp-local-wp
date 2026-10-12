@@ -25,3 +25,5 @@ This repository implements a local WordPress database MCP server. Node.js 24+ is
 ## Delivery
 
 Preserve GPL-3.0-or-later. Keep registry authentication files ignored and outside packages. Create regular PRs, use conventional titles, and use release-please for versions/tags. Shared workflows/configuration come from merged mcp-ecosystem main; change the source of truth first rather than introducing permanent downstream drift. Required CI context is `test`.
+
+Creating release tags, publishing packages, or merging a release-please PR requires explicit user approval for that release. Prepare and verify the release PR first, then leave it unmerged for review. Ordinary implementation PRs may be merged within the approved task scope.
