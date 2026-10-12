@@ -36,16 +36,24 @@ updates:
         update-types:
           - "minor"
           - "patch"
+      vitest-updates:
+        applies-to: version-updates
+        dependency-type: "development"
+        patterns:
+          - "@vitest/*"
+          - "vitest"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
       test-tooling-minor-patch:
         applies-to: version-updates
         dependency-type: "development"
         patterns:
           - "@jest/*"
-          - "@vitest/*"
           - "jest"
           - "jest-*"
           - "ts-jest"
-          - "vitest"
         update-types:
           - "minor"
           - "patch"
