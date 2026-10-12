@@ -1,0 +1,35 @@
+name: Dependabot Auto-Merge
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: >-
+      ${{
+        (
+          github.event_name == 'pull_request_target' &&
+          github.event.pull_request.user.login == 'dependabot[bot]' &&
+          !github.event.pull_request.draft
+        ) ||
+        (
+          github.event_name == 'workflow_run' &&
+          (
+            github.event.workflow_run.event == 'pull_request' ||
+            github.event.workflow_run.event == 'pull_request_target'
+          ) &&
+          github.event.workflow_run.conclusion == 'success'
+        )
+      }}
+    uses: verygoodplugins/.github/.github/workflows/dependabot-auto-merge.yml@main
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
