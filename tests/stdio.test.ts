@@ -2,7 +2,50 @@ import { test, expect } from 'vitest';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import path from 'node:path';
+import fs from 'node:fs';
+import os from 'node:os';
+import { Client } from '@modelcontextprotocol/client';
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 const entry = path.resolve('dist/index.js');
+test.each([
+  { override: undefined, writes: true },
+  { override: 'false', writes: false },
+])(
+  'dotenv loads opt-in from .env while preserving explicit override=$override',
+  async ({ override, writes }) => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'localwp-dotenv-'));
+    fs.writeFileSync(path.join(cwd, '.env'), 'MYSQL_ALLOW_WRITES=true\nDOTENV_QUIET=false\n');
+    const env = Object.fromEntries(
+      Object.entries(process.env).filter(
+        (entry): entry is [string, string] => entry[1] !== undefined,
+      ),
+    );
+    env.MYSQL_HOST = '127.0.0.1';
+    env.MYSQL_PORT = '1';
+    delete env.MYSQL_ALLOW_WRITES;
+    if (override !== undefined) env.MYSQL_ALLOW_WRITES = override;
+    const client = new Client({ name: 'dotenv-fixture', version: '1.0.0' });
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: [entry],
+      cwd,
+      env,
+      stderr: 'pipe',
+    });
+    transport.stderr?.on('data', () => {});
+    const errors: Error[] = [];
+    transport.onerror = (error) => errors.push(error);
+    try {
+      await client.connect(transport);
+      const tools = await client.listTools();
+      expect(tools.tools.some((tool) => tool.name === 'mysql_write')).toBe(writes);
+      expect(errors).toEqual([]);
+    } finally {
+      await client.close();
+      fs.rmSync(cwd, { recursive: true, force: true });
+    }
+  },
+);
 function start() {
   const child = spawn(process.execPath, [entry], {
     env: { ...process.env, MYSQL_HOST: '127.0.0.1', MYSQL_PORT: '1', DOTENV_CONFIG_QUIET: 'true' },
