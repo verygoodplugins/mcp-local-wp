@@ -6,7 +6,7 @@ A Model Context Protocol (MCP) server that gives AI assistants like Claude and C
 
 ### Upgrading to 2.0
 
-Version 2.0 requires Node.js 24 or newer and uses MCP SDK v2. Existing tool names and site selectors remain available. Query results are now `{ "rows": [...] }`; schema listing returns `{ "tables": [...] }`. Successful tools return matching structured and JSON-text results, and failures set `isError: true`.
+Version 2.0 requires Node.js 24 or newer and uses MCP SDK v2. Existing tool names and site selectors remain available. Query results are now `{ "rows": [...] }`; schema listing returns `{ "tables": [...], "hasMore": false, "nextAfter": null }` with bounded pages of table names. Successful tools return matching structured and JSON-text results, and failures set `isError: true`.
 
 Database and Local configuration are resolved lazily, so MCP tool discovery works without a running site. Explicit `MYSQL_HOST` or `MYSQL_SOCKET_PATH` selects the manual connection. Keep stdin open until all tool responses arrive; EOF closes the session. The parent watchdog also cleans up abandoned stdio servers.
 
@@ -167,7 +167,7 @@ Execute read-only SQL against your Local WordPress database.
 
 Input fields:
 
-- `sql` (string): Single read-only statement (SELECT/SHOW/DESCRIBE/EXPLAIN)
+- `sql` (string): Single read-only statement (SELECT, including WITH CTEs, or SHOW/DESCRIBE/EXPLAIN)
 - `params` ((string | number | boolean | null)[]): Optional parameter values for `?` placeholders
 
 **Example Usage:**
@@ -181,22 +181,42 @@ SELECT * FROM wp_posts WHERE post_status = ? ORDER BY post_date DESC LIMIT ?;
 SELECT option_name, option_value FROM wp_options WHERE option_name LIKE '%theme%';
 SHOW TABLES;
 DESCRIBE wp_users;
+
+-- Common table expression (CTE)
+WITH published AS (SELECT ID, post_title FROM wp_posts WHERE post_status = ?)
+SELECT * FROM published LIMIT 10;
+-- params: ["publish"]
 ```
 
 ### mysql_schema
 
 Inspect database schema using INFORMATION_SCHEMA.
 
-- No args: lists tables with basic stats
+- No args: lists up to 100 table names, sorted by their binary name, with `hasMore` and `nextAfter`
+- Listing options: `prefix` (case-sensitive literal prefix), `limit` (1–200), `after` (previous page's `nextAfter`), and `includeStats` (defaults to false)
 - With `table`: returns columns and indexes for that table
+
+When `hasMore` is true, pass `nextAfter` as `after` to fetch the next page, keeping the same prefix. The last page has `hasMore: false` and `nextAfter: null`. Listing rows contain only `table_name` by default; `includeStats: true` adds engine, estimated row count, data bytes and index bytes. `%` and `_` in a prefix are literal characters. Use `table` alone for detailed inspection; listing options cannot be combined with it. Each page reflects the current schema, so changes to tables between requests can affect the listing.
 
 Examples:
 
 ```jsonc
-// List all tables
+// First page of table names
 {
   "tool": "mysql_schema",
   "args": {}
+}
+
+// Filter to WordPress tables and include statistics
+{
+  "tool": "mysql_schema",
+  "args": { "prefix": "wp_", "limit": 50, "includeStats": true }
+}
+
+// Continue a filtered listing using the previous response's nextAfter
+{
+  "tool": "mysql_schema",
+  "args": { "prefix": "wp_", "limit": 50, "after": "wp_posts" }
 }
 
 // Inspect a specific table
@@ -547,7 +567,7 @@ DEBUG=mcp-local-wp mcp-local-wp
 
 ## Security
 
-`mysql_query` accepts one SELECT/SHOW/DESCRIBE/DESC/EXPLAIN statement. A tokenizer checks real SQL tokens using the connection's SQL mode. Executable MySQL/MariaDB comments, optimizer hints, file output, SELECT INTO, locking reads, advisory-lock functions, and EXPLAIN ANALYZE are rejected. Ordinary comments and semicolons in quoted values are supported.
+`mysql_query` accepts one SELECT/SHOW/DESCRIBE/DESC/EXPLAIN statement, including SELECT queries beginning with WITH or WITH RECURSIVE. CTE query bodies and the final query expression must resolve to SELECT, including nested WITH … SELECT and parenthesized queries; WITH … UPDATE/DELETE is rejected. MariaDB’s CYCLE … RESTRICT clause is supported for cycle detection. A tokenizer checks real SQL tokens using the connection's SQL mode. Executable MySQL/MariaDB comments, optimizer hints, file output, SELECT INTO, locking reads, advisory-lock functions, and EXPLAIN ANALYZE are rejected throughout the statement, including CTE bodies. Ordinary comments and semicolons in quoted values are supported.
 
 Every read runs in a database-enforced read-only transaction on a dedicated connection. Setup failures stop execution; failed cleanup discards the connection. `MYSQL_ALLOW_WRITES=true` exposes `mysql_write` on a separate connection; it never disables protection for `mysql_query`. Write statements permit INSERT/UPDATE/DELETE. UPDATE/DELETE require column comparisons to bound parameters in WHERE, optionally grouped with AND/OR; IN, BETWEEN and LIKE also support bound values. Bare placeholder and literal-only predicates are rejected. Schema operations and write subqueries remain blocked.
 

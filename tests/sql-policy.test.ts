@@ -3,6 +3,62 @@ import assert from 'node:assert/strict';
 import { validateReadSql, validateWriteSql } from '../src/sql-policy.js';
 
 for (const sql of [
+  'WITH t AS (SELECT 1) SELECT * FROM t',
+  'WITH t (a, b) AS (SELECT ?, ?), u AS (SELECT a FROM t) SELECT * FROM u;',
+  'WITH RECURSIVE t(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM t WHERE n<3) SELECT * FROM t',
+  '/* start */ WITH `t` AS (/* body */ SELECT 1) /* end */ SELECT * FROM `t`',
+  "WITH t AS (SELECT '); UPDATE; /*!' AS value) SELECT * FROM t",
+  'WITH t AS (WITH u AS (SELECT 1) SELECT * FROM u) SELECT * FROM t',
+  'WITH t AS ((SELECT 1)) SELECT * FROM t',
+  'WITH RECURSIVE t(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM t) CYCLE n RESTRICT SELECT * FROM t',
+  'WITH RECURSIVE t(n,m) AS (SELECT 1,2) CYCLE `n`, `m` RESTRICT SELECT * FROM t',
+  'WITH t AS (SELECT 1) (SELECT * FROM t)',
+  'WITH t AS ((SELECT 1) UNION ALL (SELECT 2)) (SELECT * FROM t) ORDER BY 1 LIMIT 2',
+]) {
+  test(`accepts CTE read: ${sql}`, () => validateReadSql(sql, sql.includes('?') ? [1, 2] : []));
+}
+for (const sql of [
+  'WITH t AS (SELECT 1) UPDATE wp_users SET user_pass=1',
+  'WITH t AS (SELECT 1) DELETE FROM wp_users',
+  'WITH t AS (SELECT 1) INSERT INTO wp_users VALUES (1)',
+  'WITH t AS (UPDATE wp_users SET ID=1) SELECT * FROM t',
+  'WITH t AS ((UPDATE wp_users SET ID=1)) SELECT * FROM t',
+  'WITH t AS (SELECT 1) (DELETE FROM wp_users)',
+  'WITH t AS ((SELECT 1) UPDATE wp_users SET ID=1) SELECT * FROM t',
+  'WITH RECURSIVE t(n) AS (SELECT 1) CYCLE n SELECT * FROM t',
+  'WITH RECURSIVE t(n) AS (SELECT 1) CYCLE n RESTRICT DELETE FROM wp_users',
+  'WITH RECURSIVE t(n) AS (SELECT 1) CYCLE n, RESTRICT SELECT * FROM t',
+  "WITH RECURSIVE t(n) AS (SELECT 1) CYCLE n RESTRICT SELECT * FROM t INTO OUTFILE '/tmp/blocked'",
+  'WITH t AS (WITH u AS (SELECT 1) DELETE FROM wp_users) SELECT * FROM t',
+  'WITH t AS () SELECT * FROM t',
+  'WITH t AS (SELECT 1)',
+  'WITH t AS (SELECT 1), SELECT 1',
+  'WITH t AS (SELECT 1) u AS (SELECT 1) SELECT 1',
+  'WITH t(a,) AS (SELECT 1) SELECT * FROM t',
+  'WITH t AS SELECT 1 SELECT * FROM t',
+  'WITH t AS (SELECT 1) SELECT * FROM t; DELETE FROM wp_users',
+  "WITH t AS (SELECT 1 INTO OUTFILE '/tmp/blocked') SELECT * FROM t",
+  "WITH t AS (SELECT 1) SELECT * FROM t INTO DUMPFILE '/tmp/blocked'",
+  'WITH t AS (SELECT * FROM wp_users FOR UPDATE) SELECT * FROM t',
+  'WITH t AS (SELECT 1) SELECT * FROM wp_users LOCK IN SHARE MODE',
+  "WITH t AS (SELECT GET_LOCK('blocked', 0)) SELECT * FROM t",
+  'WITH t AS (SELECT /*!80000 1 */ 1) SELECT * FROM t',
+  'WITH t AS (SELECT 1) /*M! DELETE FROM wp_users */ SELECT * FROM t',
+]) {
+  test(`rejects unsafe or malformed CTE: ${sql}`, () => assert.throws(() => validateReadSql(sql)));
+}
+test('CTE placeholders and SQL modes use the shared tokenizer', () => {
+  assert.throws(() => validateReadSql('WITH t AS (SELECT ?) SELECT * FROM t', []));
+  validateReadSql('WITH "t"("v") AS (SELECT ?) SELECT "v" FROM "t"', [1], { ansiQuotes: true });
+  validateReadSql("WITH t AS (SELECT 'x\\' AS v) SELECT * FROM t", [], {
+    noBackslashEscapes: true,
+  });
+  assert.throws(() => validateReadSql("WITH t AS (SELECT 'x\\' AS v) SELECT * FROM t"));
+  const nested = 'WITH t AS ('.repeat(66) + 'SELECT 1' + ') SELECT * FROM t'.repeat(66);
+  assert.throws(() => validateReadSql(nested), /WITH requires/);
+});
+
+for (const sql of [
   'SELECT 1',
   ' select ? ; -- tail\n',
   '/* normal */ /* second */ SELECT 1',

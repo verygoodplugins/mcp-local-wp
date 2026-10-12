@@ -1,9 +1,42 @@
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
 import assert from 'node:assert/strict';
 import mysql from 'mysql2/promise';
 import { MySQLClient } from '../src/mysql-client.js';
 
 const config = { user: 'fixture', password: 'fixture', multipleStatements: true };
+
+test('table pages bind prefix, cursor and limit with optional statistics', async () => {
+  const client = new MySQLClient(config);
+  const execute = vi
+    .spyOn(client, 'executeReadOnlyQuery')
+    .mockResolvedValue([{ table_name: 'wp_a' }, { table_name: 'wp_b' }, { table_name: 'wp_c' }]);
+  assert.deepEqual(await client.listTables({ prefix: "wp_%'", after: 'wp_0', limit: 2 }), {
+    tables: [{ table_name: 'wp_a' }, { table_name: 'wp_b' }],
+    hasMore: true,
+    nextAfter: 'wp_b',
+  });
+  const [sql, params] = execute.mock.calls[0];
+  assert.deepEqual(params, ["wp_%'", "wp_%'", 'wp_0', 3]);
+  assert.ok(!sql.includes("wp_%'") && !sql.includes('ENGINE AS'));
+  execute.mockResolvedValue([]);
+  assert.deepEqual(await client.listTables({ includeStats: true }), {
+    tables: [],
+    hasMore: false,
+    nextAfter: null,
+  });
+  assert.ok(execute.mock.calls[1][0].includes('ENGINE AS engine'));
+  assert.deepEqual(execute.mock.calls[1][1], ['', '', '', 101]);
+  for (const options of [
+    { limit: 0 },
+    { limit: 201 },
+    { limit: 1.5 },
+    { prefix: 'x'.repeat(65) },
+    { after: 'x'.repeat(65) },
+  ]) {
+    await assert.rejects(client.listTables(options));
+  }
+  assert.equal(execute.mock.calls.length, 2);
+});
 
 async function fixture(
   run: (

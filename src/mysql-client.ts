@@ -3,6 +3,19 @@ import type { MySQLConnectionConfig, WriteResult } from './types.js';
 
 import { validateReadSql, validateWriteSql, type SqlMode } from './sql-policy.js';
 
+export interface TableListOptions {
+  prefix?: string;
+  after?: string;
+  limit?: number;
+  includeStats?: boolean;
+}
+
+export interface TablePage {
+  tables: Record<string, unknown>[];
+  hasMore: boolean;
+  nextAfter: string | null;
+}
+
 export class MySQLClient {
   private readConnection: mysql.Connection | null = null;
   private writeConnection: mysql.Connection | null = null;
@@ -133,19 +146,42 @@ export class MySQLClient {
     return result;
   }
 
-  async listTables(): Promise<Record<string, unknown>[]> {
+  async listTables(options: TableListOptions = {}): Promise<TablePage> {
+    const { prefix = '', after = '', limit = 100, includeStats = false } = options;
+    if (
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > 200 ||
+      prefix.length > 64 ||
+      after.length > 64
+    )
+      throw new Error('Table listing requires limit 1–200 and prefix/after up to 64 characters.');
     const sql = `
       SELECT
-        TABLE_NAME AS table_name,
+        TABLE_NAME AS table_name${
+          includeStats
+            ? `,
         ENGINE AS engine,
         TABLE_ROWS AS table_rows,
         DATA_LENGTH AS data_length,
-        INDEX_LENGTH AS index_length
+        INDEX_LENGTH AS index_length`
+            : ''
+        }
       FROM information_schema.TABLES
       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE'
-      ORDER BY TABLE_NAME
+        AND CAST(LEFT(TABLE_NAME, CHAR_LENGTH(?)) AS BINARY) = CAST(? AS BINARY)
+        AND CAST(TABLE_NAME AS BINARY) > CAST(? AS BINARY)
+      ORDER BY CAST(TABLE_NAME AS BINARY)
+      LIMIT ?
     `;
-    return this.executeReadOnlyQuery(sql);
+    const rows = await this.executeReadOnlyQuery(sql, [prefix, prefix, after, limit + 1]);
+    const hasMore = rows.length > limit;
+    const tables = rows.slice(0, limit);
+    return {
+      tables,
+      hasMore,
+      nextAfter: hasMore ? String(tables.at(-1)!.table_name) : null,
+    };
   }
 
   async getTableColumns(table: string): Promise<Record<string, unknown>[]> {
