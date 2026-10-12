@@ -7,6 +7,19 @@
 
 * **mcp:** adopt SDK v2 and require Node 24 ([#20](https://github.com/verygoodplugins/mcp-local-wp/issues/20))
 
+### Security
+
+- Fixed the read-only authorization bypass reported by **kta1kri**. Executable MySQL/MariaDB comments could perform writes through mysql_query; the original bypass was reproduced on MySQL 8.0.46 and MariaDB 11.8.9.
+- Added SQL-mode-aware single-statement validation and dedicated database-enforced read-only transactions. Reject executable comments, file output, locking reads, advisory locks and EXPLAIN ANALYZE. Opt-in writes use a separate connection and require bound column predicates for UPDATE/DELETE.
+- Added blocking security regression tests for both database engines and private vulnerability reporting. SELECT-only credentials remain recommended as additional protection.
+
+### Migration notes
+
+- Requires **Node.js 24+**, MCP SDK v2 and Zod 4.
+- mysql_query returns `{rows}` and schema listing returns `{tables}`. Success includes matching structured and JSON-text objects; expected failures set `isError: true`.
+- Clients must keep stdin open until responses arrive. Shutdown awaits transport/database cleanup; the parent watchdog handles orphaned wrappers.
+- Tool names and SITE_ID/SITE_NAME selectors remain available. Explicit database credentials apply to Local auto-detection as well as manual connections.
+
 ### Features
 
 * **mcp:** adopt SDK v2 and require Node 24 ([#20](https://github.com/verygoodplugins/mcp-local-wp/issues/20)) ([0fd8e9f](https://github.com/verygoodplugins/mcp-local-wp/commit/0fd8e9fae76c84cfe434aa3e6f2e52c355e4082e))
