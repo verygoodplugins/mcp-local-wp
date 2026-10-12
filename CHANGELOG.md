@@ -13,6 +13,12 @@
 - Added SQL-mode-aware single-statement validation and dedicated database-enforced read-only transactions. Reject executable comments, file output, locking reads, advisory locks and EXPLAIN ANALYZE. Opt-in writes use a separate connection and require bound column predicates for UPDATE/DELETE.
 - Added blocking security regression tests for both database engines and private vulnerability reporting. SELECT-only credentials remain recommended as additional protection.
 
+### Dependency maintenance
+
+- Updated dotenv to 18.0.7 and upgraded Vitest plus its coverage provider together to 5.0.3. Added .env precedence and clean stdio startup regression tests.
+- Updated setup-node to 7.1.0 and pinned release-please v5 to its commit. Shared configuration comes from merged mcp-ecosystem main.
+- Grouped future Vitest runner/coverage upgrades, including majors, while retaining manual review for major updates. Kept Node 24 declarations and TypeScript 6; unsupported proposed majors were closed.
+
 ### Migration notes
 
 - Requires **Node.js 24+**, MCP SDK v2 and Zod 4.
