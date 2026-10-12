@@ -26,7 +26,7 @@ test('watchdog fires once and does not keep the process alive', () => {
 });
 test('parent probe recognizes the original parent', () => {
   expect(parentReparented(process.ppid)).toBe(false);
-  expect(parentReparented(-1)).toBe(process.platform !== 'win32');
+  expect(parentReparented(-1, 'linux')).toBe(true);
 });
 test('shutdown awaits cleanup and is idempotent', async () => {
   const originalCode = process.exitCode;
@@ -35,4 +35,17 @@ test('shutdown awaits cleanup and is idempotent', async () => {
   await Promise.all([stop(), stop()]);
   expect(cleanup).toHaveBeenCalledTimes(1);
   process.exitCode = originalCode;
+});
+
+test('Windows parent liveness uses signal zero and distinguishes access denied from death', () => {
+  const alive = vi.fn();
+  expect(parentReparented(42, 'win32', alive)).toBe(false);
+  expect(alive).toHaveBeenCalledWith(42, 0);
+  for (const code of ['EPERM', 'EACCES', 'ESRCH']) {
+    expect(
+      parentReparented(42, 'win32', () => {
+        throw Object.assign(new Error(code), { code });
+      }),
+    ).toBe(code === 'ESRCH');
+  }
 });

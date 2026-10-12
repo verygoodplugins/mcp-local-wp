@@ -5,8 +5,20 @@ export function parseWatchdogIntervalMs(raw: string | undefined): number {
   return Number.isFinite(value) && value > 0 ? Math.max(100, value) : DEFAULT_PARENT_WATCHDOG_MS;
 }
 
-export function parentReparented(parentPid: number): boolean {
-  return process.platform !== 'win32' && process.ppid !== parentPid;
+export function parentReparented(
+  parentPid: number,
+  platform: NodeJS.Platform = process.platform,
+  probe: (pid: number, signal: 0) => unknown = process.kill,
+): boolean {
+  if (platform !== 'win32') return process.ppid !== parentPid;
+  // Windows does not reparent children. Signal 0 checks existence without signaling.
+  try {
+    probe(parentPid, 0);
+    return false;
+  } catch (error) {
+    // Access denied is not proof of death; only an absent process triggers shutdown.
+    return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ESRCH';
+  }
 }
 
 export function startParentWatchdog(
