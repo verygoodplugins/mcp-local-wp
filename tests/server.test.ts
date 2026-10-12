@@ -35,7 +35,11 @@ async function session(options: ServerOptions, run: (client: Client) => Promise<
 function services() {
   const db = new MySQLClient({ user: 'fixture', password: 'fixture' });
   vi.spyOn(db, 'executeReadOnlyQuery').mockResolvedValue([{ ID: 1 }]);
-  vi.spyOn(db, 'listTables').mockResolvedValue([{ table_name: 'wp_users' }]);
+  vi.spyOn(db, 'listTables').mockResolvedValue({
+    tables: [{ table_name: 'wp_users' }],
+    hasMore: false,
+    nextAfter: null,
+  });
   vi.spyOn(db, 'getTableColumns').mockResolvedValue([{ column_name: 'ID' }]);
   vi.spyOn(db, 'getTableIndexes').mockResolvedValue([{ index_name: 'PRIMARY' }]);
   vi.spyOn(db, 'executeWriteQuery').mockResolvedValue({ affectedRows: 1 });
@@ -89,7 +93,11 @@ test('read, schema, site and write contracts return identical structured/text ob
       });
       for (const [name, args, expected] of [
         ['mysql_query', { sql: 'SELECT ?', params: [1] }, { rows: [{ ID: 1 }] }],
-        ['mysql_schema', {}, { tables: [{ table_name: 'wp_users' }] }],
+        [
+          'mysql_schema',
+          {},
+          { tables: [{ table_name: 'wp_users' }], hasMore: false, nextAfter: null },
+        ],
         [
           'mysql_schema',
           { table: 'wp_users' },
@@ -130,6 +138,37 @@ test('site discovery never constructs a database client', async () => {
       await client.callTool({ name: 'mysql_current_site', arguments: {} });
       await client.callTool({ name: 'mysql_list_sites', arguments: {} });
       expect(createClient).not.toHaveBeenCalled();
+    },
+  );
+});
+test('schema listing forwards filters, cursors and stats and rejects ambiguous inputs', async () => {
+  const db = services();
+  await session(
+    {
+      env: {},
+      resolveConfig: () => ({ config: { user: 'fixture', password: 'fixture' } }),
+      createClient: () => db,
+    },
+    async (client) => {
+      const options = { prefix: 'wp_', after: 'wp_posts', limit: 25, includeStats: true };
+      const result = await client.callTool({ name: 'mysql_schema', arguments: options });
+      expect(result.isError).not.toBe(true);
+      expect(db.listTables).toHaveBeenCalledWith(options);
+      vi.mocked(db.listTables).mockClear();
+      for (const args of [
+        { limit: 0 },
+        { limit: 201 },
+        { limit: 1.5 },
+        { prefix: 'x'.repeat(65) },
+        { after: 'x'.repeat(65) },
+        { table: 'wp_users', limit: 1 },
+        { includeStats: 'true' },
+      ]) {
+        expect((await client.callTool({ name: 'mysql_schema', arguments: args })).isError).toBe(
+          true,
+        );
+      }
+      expect(db.listTables).not.toHaveBeenCalled();
     },
   );
 });

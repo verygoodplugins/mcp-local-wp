@@ -19,10 +19,16 @@
 - Updated setup-node to 7.1.0 and pinned release-please v5 to its commit. Shared configuration comes from merged mcp-ecosystem main.
 - Grouped future Vitest runner/coverage upgrades, including majors, while retaining manual review for major updates. Kept Node 24 declarations and TypeScript 6; unsupported proposed majors were closed.
 
+### Schema discovery and CTE reads
+
+- Schema listing now returns bounded pages of table names, preventing large databases from overwhelming MCP clients. Statistics are opt-in; named-table columns and indexes are unchanged.
+- Added ordinary, recursive, multiple, nested and parenthesized CTE SELECT queries, including MariaDB CYCLE … RESTRICT. CTE bodies and the final query expression must resolve to SELECT; executable comments, file output, locking reads and advisory locks remain blocked throughout.
+- Added MySQL 8.0 and MariaDB 11.8 regressions for 225-table pagination, case-sensitive literal prefixes, case-distinct cursors, CTE reads and side effects, MariaDB cycle detection, parameter binding and SQL modes.
+
 ### Migration notes
 
 - Requires **Node.js 24+**, MCP SDK v2 and Zod 4.
-- mysql_query returns `{rows}` and schema listing returns `{tables}`. Success includes matching structured and JSON-text objects; expected failures set `isError: true`.
+- mysql_query returns `{rows}` and schema listing returns `{tables, hasMore, nextAfter}` with 100 table names per page by default (maximum 200). Use `after: nextAfter` to continue, `prefix` for a case-sensitive literal filter, and `includeStats: true` for statistics. Success includes matching structured and JSON-text objects; expected failures set `isError: true`.
 - Clients must keep stdin open until responses arrive. Shutdown awaits transport/database cleanup; the parent watchdog handles orphaned wrappers.
 - Tool names and SITE_ID/SITE_NAME selectors remain available. Explicit database credentials apply to Local auto-detection as well as manual connections.
 
@@ -32,6 +38,8 @@
 
 
 ### Bug Fixes
+
+* **mysql:** paginate schema listings and support safe CTE reads ([#32](https://github.com/verygoodplugins/mcp-local-wp/issues/32))
 
 * **sql:** enforce read-only transactions and tokenize queries ([#19](https://github.com/verygoodplugins/mcp-local-wp/issues/19)) ([bf8462d](https://github.com/verygoodplugins/mcp-local-wp/commit/bf8462debbd12ff164232cff0c685bd113c2ffbe))
 
