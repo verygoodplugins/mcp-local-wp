@@ -245,6 +245,29 @@ test('compiled stdio bounds large schema listings, paginates and treats prefixes
       await admin.query(`DROP TABLE IF EXISTS \`${name}\``);
   }
 }, 60_000);
+test('MariaDB CYCLE RESTRICT reads work; unsupported MySQL syntax remains a tool error', async () => {
+  const [version] = await admin.query<mysql.RowDataPacket[]>('SELECT VERSION() AS version');
+  await session(false, async (client) => {
+    const result = await client.callTool({
+      name: 'mysql_query',
+      arguments: {
+        sql: 'WITH RECURSIVE t(n) AS (SELECT 1 UNION ALL SELECT n%2+1 FROM t) CYCLE n RESTRICT SELECT n FROM t ORDER BY n',
+      },
+    });
+    if (String(version[0].version).includes('MariaDB')) {
+      expect(result.isError).not.toBe(true);
+      expect(result.structuredContent).toEqual({ rows: [{ n: 1 }, { n: 2 }] });
+    } else expect(result.isError).toBe(true);
+    for (const sql of [
+      'WITH RECURSIVE t(n) AS (SELECT 1) CYCLE n RESTRICT DELETE FROM wp_users',
+      'WITH RECURSIVE t(n) AS (SELECT 1) CYCLE n RESTRICT SELECT * FROM wp_users FOR UPDATE',
+    ])
+      expect((await client.callTool({ name: 'mysql_query', arguments: { sql } })).isError).toBe(
+        true,
+      );
+    await assertUnchanged();
+  });
+});
 test('opt-in writes work and concurrent reads remain protected', async () => {
   await session(true, async (client) => {
     expect((await client.listTools()).tools.map((tool) => tool.name)).toContain('mysql_write');

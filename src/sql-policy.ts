@@ -133,6 +133,16 @@ function validateSelect(tokens: Token[], start: number, end: number, nesting = 0
       if (i >= end || bodyStart === i) invalid();
       validateSelect(tokens, bodyStart, i, nesting + 1);
       i++;
+      if (word('CYCLE')) {
+        i++;
+        identifier();
+        while (tokens[i]?.value === ',') {
+          i++;
+          identifier();
+        }
+        if (!word('RESTRICT')) invalid();
+        i++;
+      }
       if (tokens[i]?.value !== ',') break;
       i++;
     } while (i < end);
