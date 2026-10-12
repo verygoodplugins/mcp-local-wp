@@ -1,5 +1,48 @@
 # Changelog
 
+## [2.0.0](https://github.com/verygoodplugins/mcp-local-wp/compare/v1.1.0...v2.0.0) (2026-10-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **mcp:** adopt SDK v2 and require Node 24 ([#20](https://github.com/verygoodplugins/mcp-local-wp/issues/20))
+
+### Security
+
+- Fixed the read-only authorization bypass reported by **kta1kri**. Executable MySQL/MariaDB comments could perform writes through mysql_query; the original bypass was reproduced on MySQL 8.0.46 and MariaDB 11.8.9.
+- Added SQL-mode-aware single-statement validation and dedicated database-enforced read-only transactions. Reject executable comments, file output, locking reads, advisory locks and EXPLAIN ANALYZE. Opt-in writes use a separate connection and require bound column predicates for UPDATE/DELETE.
+- Added blocking security regression tests for both database engines and private vulnerability reporting. SELECT-only credentials remain recommended as additional protection.
+
+### Dependency maintenance
+
+- Updated dotenv to 18.0.7 and upgraded Vitest plus its coverage provider together to 5.0.3. Added .env precedence and clean stdio startup regression tests.
+- Updated setup-node to 7.1.0 and pinned release-please v5 to its commit. Shared configuration comes from merged mcp-ecosystem main.
+- Grouped future Vitest runner/coverage upgrades, including majors, while retaining manual review for major updates. Kept Node 24 declarations and TypeScript 6; unsupported proposed majors were closed.
+
+### Schema discovery and CTE reads
+
+- Schema listing now returns bounded pages of table names, preventing large databases from overwhelming MCP clients. Statistics are opt-in; named-table columns and indexes are unchanged.
+- Added ordinary, recursive, multiple, nested and parenthesized CTE SELECT queries, including MariaDB CYCLE … RESTRICT. CTE bodies and the final query expression must resolve to SELECT; executable comments, file output, locking reads and advisory locks remain blocked throughout.
+- Added MySQL 8.0 and MariaDB 11.8 regressions for 225-table pagination, case-sensitive literal prefixes, case-distinct cursors, CTE reads and side effects, MariaDB cycle detection, parameter binding and SQL modes.
+
+### Migration notes
+
+- Requires **Node.js 24+**, MCP SDK v2 and Zod 4.
+- mysql_query returns `{rows}` and schema listing returns `{tables, hasMore, nextAfter}` with 100 table names per page by default (maximum 200). Use `after: nextAfter` to continue, `prefix` for a case-sensitive literal filter, and `includeStats: true` for statistics. Success includes matching structured and JSON-text objects; expected failures set `isError: true`.
+- Clients must keep stdin open until responses arrive. Shutdown awaits transport/database cleanup; the parent watchdog handles orphaned wrappers.
+- Tool names and SITE_ID/SITE_NAME selectors remain available. Explicit database credentials apply to Local auto-detection as well as manual connections.
+
+### Features
+
+* **mcp:** adopt SDK v2 and require Node 24 ([#20](https://github.com/verygoodplugins/mcp-local-wp/issues/20)) ([0fd8e9f](https://github.com/verygoodplugins/mcp-local-wp/commit/0fd8e9fae76c84cfe434aa3e6f2e52c355e4082e))
+
+
+### Bug Fixes
+
+* **mysql:** paginate schema listings and support safe CTE reads ([#32](https://github.com/verygoodplugins/mcp-local-wp/issues/32))
+
+* **sql:** enforce read-only transactions and tokenize queries ([#19](https://github.com/verygoodplugins/mcp-local-wp/issues/19)) ([bf8462d](https://github.com/verygoodplugins/mcp-local-wp/commit/bf8462debbd12ff164232cff0c685bd113c2ffbe))
+
 ## [1.1.0](https://github.com/verygoodplugins/mcp-local-wp/compare/v1.0.1...v1.1.0) (2026-01-04)
 
 
