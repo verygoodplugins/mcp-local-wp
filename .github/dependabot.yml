@@ -4,15 +4,78 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    open-pull-requests-limit: 2
     groups:
-      npm-version-updates:
-        applies-to: version-updates
-        patterns:
-          - "*"
-      npm-security-updates:
+      security-updates:
         applies-to: security-updates
         patterns:
           - "*"
+      production-minor-patch:
+        applies-to: version-updates
+        dependency-type: "production"
+        update-types:
+          - "minor"
+          - "patch"
+      eslint-minor-patch:
+        applies-to: version-updates
+        dependency-type: "development"
+        patterns:
+          - "@eslint/*"
+          - "eslint"
+          - "eslint-*"
+          - "typescript-eslint"
+        update-types:
+          - "minor"
+          - "patch"
+      typescript-minor-patch:
+        applies-to: version-updates
+        dependency-type: "development"
+        patterns:
+          - "@types/*"
+          - "tsx"
+          - "typescript"
+        update-types:
+          - "minor"
+          - "patch"
+      test-tooling-minor-patch:
+        applies-to: version-updates
+        dependency-type: "development"
+        patterns:
+          - "@jest/*"
+          - "@vitest/*"
+          - "jest"
+          - "jest-*"
+          - "ts-jest"
+          - "vitest"
+        update-types:
+          - "minor"
+          - "patch"
+      development-minor-patch:
+        applies-to: version-updates
+        dependency-type: "development"
+        exclude-patterns:
+          - "@eslint/*"
+          - "@jest/*"
+          - "@types/*"
+          - "@vitest/*"
+          - "eslint"
+          - "eslint-*"
+          - "jest"
+          - "jest-*"
+          - "ts-jest"
+          - "tsx"
+          - "typescript"
+          - "typescript-eslint"
+          - "vitest"
+        update-types:
+          - "minor"
+          - "patch"
     commit-message:
       prefix: "chore(deps)"
+    open-pull-requests-limit: 10
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(deps)"
+    open-pull-requests-limit: 10

@@ -13,6 +13,7 @@ permissions:
 
 jobs:
   conventional-pr-title:
+    name: Lint PR Title
     if: ${{ github.event.pull_request.base.ref == 'main' }}
     runs-on: ubuntu-latest
     steps:

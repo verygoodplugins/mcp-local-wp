@@ -1,39 +1,35 @@
-name: Dependabot auto-merge
+name: Dependabot Auto-Merge
 
 on:
   pull_request_target:
-    types:
-      - opened
-      - reopened
-      - synchronize
-      - ready_for_review
+    types: [opened, reopened, synchronize, ready_for_review]
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
 
 permissions:
   contents: write
+  issues: write
   pull-requests: write
 
 jobs:
   auto-merge:
-    if: github.actor == 'dependabot[bot]'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Fetch Dependabot metadata
-        id: meta
-        uses: dependabot/fetch-metadata@v2
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Approve and enable auto-merge
-        if: |
-          steps.meta.outputs.update-type != 'version-update:semver-major' ||
-          steps.meta.outputs.package-ecosystem == 'github_actions'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-        run: |
-          CURRENT_LOGIN="$(gh api user --jq .login)"
-          ALREADY_APPROVED="$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews" --jq '[.[] | select(.user.login == "'"$CURRENT_LOGIN"'" and .state == "APPROVED")] | length')"
-          if [ "$ALREADY_APPROVED" -eq 0 ]; then
-            gh pr review --approve "$PR_URL"
-          fi
-          gh pr merge --auto --squash "$PR_URL"
+    if: >-
+      ${{
+        (
+          github.event_name == 'pull_request_target' &&
+          github.event.pull_request.user.login == 'dependabot[bot]' &&
+          !github.event.pull_request.draft
+        ) ||
+        (
+          github.event_name == 'workflow_run' &&
+          (
+            github.event.workflow_run.event == 'pull_request' ||
+            github.event.workflow_run.event == 'pull_request_target'
+          ) &&
+          github.event.workflow_run.conclusion == 'success'
+        )
+      }}
+    uses: verygoodplugins/.github/.github/workflows/dependabot-auto-merge.yml@main
+    secrets:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}

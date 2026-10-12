@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/verygoodplugins/mcp-local-wp/security/advisories/new
+    about: Report vulnerabilities privately via GitHub Security Advisories.
+  - name: Very Good Plugins support
+    url: https://verygoodplugins.com/contact/?utm_source=github
+    about: Sales, billing, or non-bug questions.
