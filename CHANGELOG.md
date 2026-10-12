@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.0.0](https://github.com/verygoodplugins/mcp-local-wp/compare/v1.1.0...v2.0.0) (2026-10-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **mcp:** adopt SDK v2 and require Node 24 ([#20](https://github.com/verygoodplugins/mcp-local-wp/issues/20))
+
+### Features
+
+* **mcp:** adopt SDK v2 and require Node 24 ([#20](https://github.com/verygoodplugins/mcp-local-wp/issues/20)) ([0fd8e9f](https://github.com/verygoodplugins/mcp-local-wp/commit/0fd8e9fae76c84cfe434aa3e6f2e52c355e4082e))
+
+
+### Bug Fixes
+
+* **sql:** enforce read-only transactions and tokenize queries ([#19](https://github.com/verygoodplugins/mcp-local-wp/issues/19)) ([bf8462d](https://github.com/verygoodplugins/mcp-local-wp/commit/bf8462debbd12ff164232cff0c685bd113c2ffbe))
+
 ## [1.1.0](https://github.com/verygoodplugins/mcp-local-wp/compare/v1.0.1...v1.1.0) (2026-01-04)
 
 
