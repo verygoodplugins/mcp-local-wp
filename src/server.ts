@@ -113,7 +113,7 @@ export function createServer(options: ServerOptions = {}) {
     {
       title: 'Query WordPress database',
       description:
-        'Execute a single read-only SELECT/SHOW/DESCRIBE/EXPLAIN statement in a database-enforced read-only transaction.',
+        'Execute a single read-only SELECT (including WITH CTEs)/SHOW/DESCRIBE/EXPLAIN statement in a database-enforced read-only transaction.',
       inputSchema: sqlInput,
       outputSchema: z.object({ rows: z.array(row) }),
       annotations: readAnnotations,
@@ -131,22 +131,53 @@ export function createServer(options: ServerOptions = {}) {
     'mysql_schema',
     {
       title: 'Inspect WordPress schema',
-      description: 'List tables, or inspect columns and indexes for one table.',
-      inputSchema: z.object({
-        table: z
-          .string()
-          .regex(/^[A-Za-z0-9_]+$/)
-          .optional(),
-      }),
+      description:
+        'List up to 100 table names by default (maximum 200). Filter by literal prefix, continue with nextAfter as after, or request statistics. Inspect columns and indexes with table.',
+      inputSchema: z
+        .object({
+          table: z
+            .string()
+            .regex(/^[A-Za-z0-9_]+$/)
+            .optional(),
+          prefix: z
+            .string()
+            .max(64)
+            .optional()
+            .describe('Case-sensitive literal table-name prefix; % and _ are not wildcards.'),
+          after: z
+            .string()
+            .max(64)
+            .optional()
+            .describe('nextAfter from the previous page; keep the same prefix.'),
+          limit: z
+            .number()
+            .int()
+            .min(1)
+            .max(200)
+            .optional()
+            .describe('Page size; defaults to 100.'),
+          includeStats: z
+            .boolean()
+            .optional()
+            .describe('Include engine, row estimate and byte statistics; defaults to false.'),
+        })
+        .refine(
+          (input) =>
+            !input.table ||
+            [input.prefix, input.after, input.limit, input.includeStats].every(
+              (value) => value === undefined,
+            ),
+          { message: 'Use table alone for detailed inspection, or listing options without table.' },
+        ),
       outputSchema: z.union([
-        z.object({ tables: z.array(row) }),
+        z.object({ tables: z.array(row), hasMore: z.boolean(), nextAfter: z.string().nullable() }),
         z.object({ table: z.string(), columns: z.array(row), indexes: z.array(row) }),
       ]),
       annotations: readAnnotations,
     },
-    async ({ table }) => {
+    async ({ table, ...listing }) => {
       try {
-        if (!table) return success({ tables: await getClient().listTables() });
+        if (!table) return success({ ...(await getClient().listTables(listing)) });
         const [columns, indexes] = await Promise.all([
           getClient().getTableColumns(table),
           getClient().getTableIndexes(table),

@@ -123,6 +123,128 @@ test('database protection still rejects writes when tokenizer validation is bypa
     await client.disconnect();
   }
 });
+test('compiled stdio supports CTE reads while rejecting CTE writes and side effects', async () => {
+  await session(false, async (client) => {
+    for (const [sql, params, rows] of [
+      ['WITH t AS (SELECT ? AS value) SELECT value FROM t', [7], [{ value: 7 }]],
+      ['WITH t(n) AS (SELECT 1), u AS (SELECT n+1 AS n FROM t) SELECT n FROM u', [], [{ n: 2 }]],
+      [
+        'WITH RECURSIVE t(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM t WHERE n<3) SELECT n FROM t ORDER BY n',
+        [],
+        [{ n: 1 }, { n: 2 }, { n: 3 }],
+      ],
+      [
+        "WITH t AS (SELECT '; /*! UPDATE' AS value) SELECT value FROM t",
+        [],
+        [{ value: '; /*! UPDATE' }],
+      ],
+      ['WITH t AS (WITH u AS (SELECT 1 AS n) SELECT n FROM u) SELECT n FROM t', [], [{ n: 1 }]],
+      ['WITH t AS ((SELECT 1 AS n)) SELECT n FROM t', [], [{ n: 1 }]],
+      ['WITH t AS (SELECT 1 AS n) (SELECT n FROM t)', [], [{ n: 1 }]],
+      [
+        'WITH t AS ((SELECT 1 AS n) UNION ALL (SELECT 2)) (SELECT n FROM t) ORDER BY n LIMIT 2',
+        [],
+        [{ n: 1 }, { n: 2 }],
+      ],
+    ] as const) {
+      const result = await client.callTool({ name: 'mysql_query', arguments: { sql, params } });
+      expect(result.isError, sql).not.toBe(true);
+      expect(result.structuredContent).toEqual({ rows });
+      if (result.content[0].type === 'text')
+        expect(JSON.parse(result.content[0].text)).toEqual(result.structuredContent);
+    }
+    for (const sql of [
+      "WITH t AS (SELECT 1) UPDATE wp_users SET user_pass='marker' WHERE ID=1",
+      'WITH t AS (SELECT 1) DELETE FROM wp_options WHERE option_id=1',
+      'WITH t AS (SELECT mutate_option() AS n) SELECT * FROM t',
+      "WITH t AS (SELECT 1) SELECT * FROM t INTO OUTFILE '/tmp/localwp-cte-forbidden'",
+      'WITH t AS (SELECT * FROM wp_users FOR UPDATE) SELECT * FROM t',
+      "WITH t AS (SELECT GET_LOCK('localwp-cte-forbidden', 0)) SELECT * FROM t",
+      'WITH t AS (SELECT /*!80000 1 */ 1) SELECT * FROM t',
+      'WITH t AS (SELECT 1) /*M! DELETE FROM wp_options */ SELECT * FROM t',
+      'WITH t AS (SELECT 1) SELECT * FROM t; DELETE FROM wp_options',
+      'WITH t AS (SELECT ?) SELECT * FROM t',
+    ])
+      expect(
+        (await client.callTool({ name: 'mysql_query', arguments: { sql } })).isError,
+        sql,
+      ).toBe(true);
+    await assertUnchanged();
+  });
+});
+test('compiled stdio bounds large schema listings, paginates and treats prefixes literally', async () => {
+  const names = Array.from(
+    { length: 225 },
+    (_, i) => `schema_fixture_${String(i).padStart(3, '0')}`,
+  );
+  const special = ['schema_%_literal', 'schema_X_literal', 'schema_case_A', 'schema_case_a'];
+  try {
+    for (const name of [...names, ...special])
+      await admin.query(`CREATE TABLE IF NOT EXISTS \`${name}\` (id INT)`);
+    await session(false, async (client) => {
+      const list = async (args: Record<string, unknown>) => {
+        const result = await client.callTool({ name: 'mysql_schema', arguments: args });
+        expect(result.isError).not.toBe(true);
+        const page = result.structuredContent as {
+          tables: { table_name: string; engine?: string }[];
+          hasMore: boolean;
+          nextAfter: string | null;
+        };
+        if (result.content[0].type === 'text') {
+          expect(JSON.parse(result.content[0].text)).toEqual(page);
+          expect(result.content[0].text.length).toBeLessThan(25000);
+        }
+        return page;
+      };
+      const first = await list({});
+      expect(first.tables).toHaveLength(100);
+      expect(first.hasMore).toBe(true);
+      expect(first.tables.every((row) => Object.keys(row).join() === 'table_name')).toBe(true);
+      const collected: string[] = [];
+      let after: string | undefined;
+      do {
+        const page = await list({
+          prefix: 'schema_fixture_',
+          limit: 80,
+          ...(after ? { after } : {}),
+        });
+        collected.push(...page.tables.map((row) => row.table_name));
+        expect(page.hasMore).toBe(page.nextAfter !== null);
+        after = page.nextAfter ?? undefined;
+      } while (after);
+      expect(collected).toEqual(names);
+      const stats = await list({ prefix: 'schema_fixture_', limit: 200, includeStats: true });
+      expect(stats.tables).toHaveLength(200);
+      expect(stats.tables[0].engine).toBeTruthy();
+      expect((await list({ prefix: 'schema_%' })).tables).toEqual([
+        { table_name: 'schema_%_literal' },
+      ]);
+      expect((await list({ prefix: 'SCHEMA_fixture_' })).tables).toEqual([]);
+      const casePage = await list({ prefix: 'schema_case_', limit: 1 });
+      const caseNext = await list({ prefix: 'schema_case_', limit: 1, after: casePage.nextAfter });
+      expect([...casePage.tables, ...caseNext.tables].map((row) => row.table_name)).toEqual([
+        'schema_case_A',
+        'schema_case_a',
+      ]);
+      expect(await list({ prefix: 'absent_fixture_' })).toEqual({
+        tables: [],
+        hasMore: false,
+        nextAfter: null,
+      });
+      expect(
+        (await client.callTool({ name: 'mysql_schema', arguments: { table: 'wp_users' } }))
+          .structuredContent,
+      ).toMatchObject({
+        table: 'wp_users',
+        columns: expect.any(Array),
+        indexes: expect.any(Array),
+      });
+    });
+  } finally {
+    for (const name of [...names, ...special])
+      await admin.query(`DROP TABLE IF EXISTS \`${name}\``);
+  }
+}, 60_000);
 test('opt-in writes work and concurrent reads remain protected', async () => {
   await session(true, async (client) => {
     expect((await client.listTools()).tools.map((tool) => tool.name)).toContain('mysql_write');
@@ -175,6 +297,12 @@ test('connection tokenization respects NO_BACKSLASH_ESCAPES and ANSI_QUOTES', as
     await expect(client.executeReadOnlyQuery('SELECT "ID" FROM wp_users')).resolves.toEqual([
       { ID: 1 },
     ]);
+    await expect(
+      client.executeReadOnlyQuery('WITH "t" AS (SELECT "ID" FROM wp_users) SELECT "ID" FROM "t"'),
+    ).resolves.toEqual([{ ID: 1 }]);
+    await expect(
+      client.executeReadOnlyQuery("WITH t AS (SELECT 'x\\' AS value) SELECT value FROM t"),
+    ).resolves.toEqual([{ value: 'x\\' }]);
     await expect(client.executeReadOnlyQuery("SELECT 'x\\'; SELECT 2'")).rejects.toThrow();
   } finally {
     create.mockRestore();

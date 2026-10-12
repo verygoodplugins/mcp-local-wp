@@ -94,15 +94,79 @@ function validateParameters(tokens: Token[], params: unknown[] = []): void {
   }
 }
 
+/** Consume a CTE prefix, checking each query body and the final SELECT. */
+function validateSelect(tokens: Token[], start: number, end: number, nesting = 0): void {
+  const invalid = (): never => {
+    throw new Error('WITH requires SELECT query bodies and a final SELECT statement.');
+  };
+  if (nesting > 64) invalid();
+  let i = start;
+  const word = (value: string) => tokens[i]?.kind === 'word' && tokens[i].value === value;
+  const identifier = () => {
+    const token = tokens[i++];
+    if (
+      !token ||
+      !(token.kind === 'quoted' || (token.kind === 'word' && /^[A-Z_$]/.test(token.value)))
+    )
+      invalid();
+  };
+  if (word('WITH')) {
+    i++;
+    if (word('RECURSIVE')) i++;
+    do {
+      identifier();
+      if (tokens[i]?.value === '(') {
+        i++;
+        identifier();
+        while (tokens[i]?.value === ',') {
+          i++;
+          identifier();
+        }
+        if (tokens[i++]?.value !== ')') invalid();
+      }
+      if (!word('AS')) invalid();
+      i++;
+      const open = tokens[i++];
+      if (open?.value !== '(') invalid();
+      const bodyStart = i;
+      while (i < end && !(tokens[i].value === ')' && tokens[i].depth === open.depth)) i++;
+      if (i >= end || bodyStart === i) invalid();
+      validateSelect(tokens, bodyStart, i, nesting + 1);
+      i++;
+      if (tokens[i]?.value !== ',') break;
+      i++;
+    } while (i < end);
+  }
+  if (i < end && tokens[i].value === '(') {
+    const open = tokens[i++];
+    const bodyStart = i;
+    while (i < end && !(tokens[i].value === ')' && tokens[i].depth === open.depth)) i++;
+    if (i >= end || bodyStart === i) invalid();
+    validateSelect(tokens, bodyStart, i, nesting + 1);
+    i++;
+    if (i === end) return;
+    if (word('ORDER') || word('LIMIT')) return;
+    if (word('UNION') || word('INTERSECT') || word('EXCEPT')) {
+      i++;
+      if (word('ALL') || word('DISTINCT')) i++;
+      validateSelect(tokens, i, end, nesting + 1);
+      return;
+    }
+    invalid();
+  }
+  if (i >= end || !word('SELECT')) invalid();
+}
+
 export function validateReadSql(sql: string, params?: unknown[], mode?: SqlMode): void {
   const tokens = tokenizeSql(sql, mode);
   const first = tokens[0];
   if (
     first.kind !== 'word' ||
-    !['SELECT', 'SHOW', 'DESCRIBE', 'DESC', 'EXPLAIN'].includes(first.value)
+    !['SELECT', 'WITH', 'SHOW', 'DESCRIBE', 'DESC', 'EXPLAIN'].includes(first.value)
   ) {
-    throw new Error('Only read-only queries are permitted (SELECT/SHOW/DESCRIBE/EXPLAIN).');
+    throw new Error('Only read-only queries are permitted (SELECT/WITH/SHOW/DESCRIBE/EXPLAIN).');
   }
+  if (first.value === 'WITH') validateSelect(tokens, 0, tokens.length);
   const words = tokens.filter((t) => t.kind === 'word').map((t) => t.value);
   if (words.includes('INTO') || (first.value === 'EXPLAIN' && words.includes('ANALYZE'))) {
     throw new Error('File output, SELECT INTO, and EXPLAIN ANALYZE are not permitted.');
