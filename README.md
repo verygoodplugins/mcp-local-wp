@@ -4,6 +4,12 @@
 
 A Model Context Protocol (MCP) server that gives AI assistants like Claude and Cursor direct, read-only access to your Local by Flywheel WordPress database. No more guessing table structures. No more writing SQL queries blind. Your AI can now understand your actual data.
 
+### Upgrading to 2.0
+
+Version 2.0 requires Node.js 24 or newer and uses MCP SDK v2. Existing tool names and site selectors remain available. Query results are now `{ "rows": [...] }`; schema listing returns `{ "tables": [...] }`. Successful tools return matching structured and JSON-text results, and failures set `isError: true`.
+
+Database and Local configuration are resolved lazily, so MCP tool discovery works without a running site. Explicit `MYSQL_HOST` or `MYSQL_SOCKET_PATH` selects the manual connection. Keep stdin open until all tool responses arrive; EOF closes the session. The parent watchdog also cleans up abandoned stdio servers.
+
 ## 🤔 What's an MCP Server?
 
 Think of MCP (Model Context Protocol) as a secure bridge between AI assistants and your development tools. Instead of copying and pasting database schemas or query results, MCP servers let AI assistants directly interact with your tools while you maintain complete control.
@@ -24,15 +30,16 @@ Here's an actual support ticket we were working on. The task was simple: fetch q
 ![Very Good Plugins  Cursor+Diagnose LearnDash quiz field syncing issue — wp-fusion (Workspace)  2025-09-09 at 12 34 38](https://github.com/user-attachments/assets/65da669d-8515-49ed-942c-0dd43aa29bae)
 
 The AI tried its best, suggesting this query:
+
 ```php
-$quiz_activities = $wpdb->get_results( 
-  $wpdb->prepare( 
-    'SELECT post_id, activity_meta FROM ' . esc_sql( LDLMS_DB::get_table_name( 'user_activity' ) ) . ' 
+$quiz_activities = $wpdb->get_results(
+  $wpdb->prepare(
+    'SELECT post_id, activity_meta FROM ' . esc_sql( LDLMS_DB::get_table_name( 'user_activity' ) ) . '
      WHERE user_id=%d AND activity_type=%s AND activity_status=1 AND activity_completed IS NOT NULL',
-    $user_id, 
-    'quiz' 
-  ), 
-  ARRAY_A 
+    $user_id,
+    'quiz'
+  ),
+  ARRAY_A
 );
 ```
 
@@ -43,13 +50,14 @@ $quiz_activities = $wpdb->get_results(
 ![Very Good Plugins  Cursor+Diagnose LearnDash quiz field syncing issue — wp-fusion (Workspace)  2025-09-09 at 12 54 07](https://github.com/user-attachments/assets/d266d9a4-a098-4ce5-9564-0db5f8e160bd)
 
 With database access, the AI immediately saw the actual table structure and wrote:
+
 ```php
 $quiz_activities = $wpdb->get_results(
   $wpdb->prepare(
-    'SELECT ua.post_id, ua.activity_id, uam.activity_meta_key, uam.activity_meta_value 
+    'SELECT ua.post_id, ua.activity_id, uam.activity_meta_key, uam.activity_meta_value
      FROM ' . esc_sql( LDLMS_DB::get_table_name( 'user_activity' ) ) . ' ua
-     LEFT JOIN ' . esc_sql( LDLMS_DB::get_table_name( 'user_activity_meta' ) ) . ' uam 
-     ON ua.activity_id = uam.activity_id 
+     LEFT JOIN ' . esc_sql( LDLMS_DB::get_table_name( 'user_activity_meta' ) ) . ' uam
+     ON ua.activity_id = uam.activity_id
      WHERE ua.user_id=%d AND ua.activity_type=%s AND ua.activity_completed IS NOT NULL
      AND uam.activity_meta_key IN (%s, %s, %s)',
     $user_id,
@@ -67,6 +75,7 @@ $quiz_activities = $wpdb->get_results(
 ## 🚀 Why This Changes Everything
 
 When your AI assistant can read your database:
+
 - **No more schema guessing** - It sees your actual tables and columns
 - **Accurate JOIN operations** - It understands table relationships
 - **Real data validation** - It can verify that data exists before suggesting queries
@@ -80,6 +89,7 @@ When using the original [mcp-server-mysql](https://github.com/benborla/mcp-serve
 1. **Dynamic Paths**: Local by Flywheel generates unique identifiers for each site (like `lx97vbzE7`) that change when sites are restarted
 2. **Socket vs Port Confusion**: Local uses both Unix sockets and TCP ports, but the configuration can be tricky
 3. **Hardcoded Configurations**: Most setups require manual path updates every time Local restarts
+
 ## Our Solution
 
 This MCP server **automatically detects** your active Local by Flywheel MySQL instance by:
@@ -143,7 +153,7 @@ Use the `mysql_current_site` tool to see which site you're connected to:
   "siteId": "lx97vbzE7",
   "sitePath": "/Users/.../Local Sites/dev",
   "domain": "dev.local",
-  "selectionMethod": "cwd_detection"
+  "selectionMethod": "cwd_detection",
 }
 ```
 
@@ -152,13 +162,16 @@ Use `mysql_list_sites` to see all available sites and their status.
 ## Tools Available
 
 ### mysql_query
+
 Execute read-only SQL against your Local WordPress database.
 
 Input fields:
+
 - `sql` (string): Single read-only statement (SELECT/SHOW/DESCRIBE/EXPLAIN)
-- `params` (string[]): Optional parameter values for `?` placeholders
+- `params` ((string | number | boolean | null)[]): Optional parameter values for `?` placeholders
 
 **Example Usage:**
+
 ```sql
 -- With parameters
 SELECT * FROM wp_posts WHERE post_status = ? ORDER BY post_date DESC LIMIT ?;
@@ -171,6 +184,7 @@ DESCRIBE wp_users;
 ```
 
 ### mysql_schema
+
 Inspect database schema using INFORMATION_SCHEMA.
 
 - No args: lists tables with basic stats
@@ -193,6 +207,7 @@ Examples:
 ```
 
 ### mysql_current_site
+
 Get information about the currently connected Local WordPress site.
 
 Returns the site name, ID, path, domain, socket path, and how the site was selected (env var, cwd detection, or auto-detection).
@@ -200,7 +215,7 @@ Returns the site name, ID, path, domain, socket path, and how the site was selec
 ```jsonc
 {
   "tool": "mysql_current_site",
-  "args": {}
+  "args": {},
 }
 // Returns:
 // {
@@ -214,12 +229,13 @@ Returns the site name, ID, path, domain, socket path, and how the site was selec
 ```
 
 ### mysql_list_sites
+
 List all available Local WordPress sites and their running status.
 
 ```jsonc
 {
   "tool": "mysql_list_sites",
-  "args": {}
+  "args": {},
 }
 // Returns:
 // {
@@ -237,7 +253,7 @@ List all available Local WordPress sites and their running status.
 
 - [Local by Flywheel](https://localwp.com/) installed and running
 - An active Local site running
-- Node.js 18+ (for local development only)
+- Node.js 24+
 
 ## Quick Setup (Recommended)
 
@@ -252,10 +268,7 @@ Add this to your Cursor MCP configuration file (`.cursor/mcp.json`):
   "mcpServers": {
     "mcp-local-wp": {
       "command": "npx",
-      "args": [
-        "-y",
-        "@verygoodplugins/mcp-local-wp@latest"
-      ]
+      "args": ["-y", "@verygoodplugins/mcp-local-wp@latest"]
     }
   }
 }
@@ -273,10 +286,7 @@ Add this to your Claude Desktop configuration file:
   "mcpServers": {
     "mcp-local-wp": {
       "command": "npx",
-      "args": [
-        "-y",
-        "@verygoodplugins/mcp-local-wp@latest"
-      ]
+      "args": ["-y", "@verygoodplugins/mcp-local-wp@latest"]
     }
   }
 }
@@ -302,9 +312,7 @@ npm run build
   "mcpServers": {
     "mcp-local-wp": {
       "command": "node",
-      "args": [
-        "/full/path/to/mcp-local-wp/dist/index.js"
-      ]
+      "args": ["/full/path/to/mcp-local-wp/dist/index.js"]
     }
   }
 }
@@ -319,10 +327,7 @@ For non-Local setups or custom configurations:
   "mcpServers": {
     "mcp-local-wp": {
       "command": "npx",
-      "args": [
-        "-y",
-        "@verygoodplugins/mcp-local-wp@latest"
-      ],
+      "args": ["-y", "@verygoodplugins/mcp-local-wp@latest"],
       "env": {
         "MYSQL_DB": "local",
         "MYSQL_HOST": "localhost",
@@ -337,12 +342,12 @@ For non-Local setups or custom configurations:
 
 ### Site Selection Variables
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `SITE_ID` | Explicit site ID (highest priority) | `lx97vbzE7` |
-| `SITE_NAME` | Site name for lookup | `dev` |
+| Variable           | Description                         | Example                   |
+| ------------------ | ----------------------------------- | ------------------------- |
+| `SITE_ID`          | Explicit site ID (highest priority) | `lx97vbzE7`               |
+| `SITE_NAME`        | Site name for lookup                | `dev`                     |
 | `LOCAL_SITES_JSON` | Override path to Local's sites.json | `/custom/path/sites.json` |
-| `LOCAL_RUN_DIR` | Override Local's run directory | `/custom/run/path` |
+| `LOCAL_RUN_DIR`    | Override Local's run directory      | `/custom/run/path`        |
 
 ## How It Works with Local by Flywheel
 
@@ -361,6 +366,7 @@ When we first tried to use [mcp-server-mysql](https://github.com/benborla/mcp-se
 We solved this step by step:
 
 #### 1. Process-Based Detection
+
 Instead of guessing paths, we scan for the actual running MySQL process:
 
 ```bash
@@ -370,6 +376,7 @@ ps aux | grep mysqld | grep -v grep
 This finds the active MySQL instance and extracts its configuration file path.
 
 #### 2. Dynamic Path Resolution
+
 ```typescript
 // From the process args: --defaults-file=/Users/.../Local/run/lx97vbzE7/conf/mysql/my.cnf
 // We extract the site directory and build the socket path
@@ -379,7 +386,9 @@ const socketPath = path.join(siteDir, 'mysql/mysqld.sock');
 ```
 
 #### 3. Automatic Configuration
+
 The server automatically configures itself with:
+
 - Correct socket path for the active Local site
 - Proper database name (`local`)
 - Default credentials (`root`/`root`)
@@ -390,7 +399,7 @@ The server automatically configures itself with:
 ✅ **Restart Resilient**: Works every time you restart Local by Flywheel  
 ✅ **Site Switching**: Automatically adapts if you switch between Local sites  
 ✅ **Zero Maintenance**: No need to manually update paths ever again  
-✅ **Error Handling**: Provides clear error messages if MySQL isn't running  
+✅ **Error Handling**: Provides clear error messages if MySQL isn't running
 
 ### Local Directory Structure We Handle
 
@@ -408,15 +417,15 @@ The server intelligently finds the active site and connects to the right MySQL i
 
 ## Usage Examples
 
-Once connected, you can use the `mysql_query` tool to execute any SQL query against your Local WordPress database:
+Once connected, you can use the `mysql_query` tool to execute a permitted read-only SQL query against your Local WordPress database:
 
 ### Getting Recent Posts
 
 ```sql
-SELECT ID, post_title, post_date, post_status 
-FROM wp_posts 
-WHERE post_type = 'post' AND post_status = 'publish' 
-ORDER BY post_date DESC 
+SELECT ID, post_title, post_date, post_status
+FROM wp_posts
+WHERE post_type = 'post' AND post_status = 'publish'
+ORDER BY post_date DESC
 LIMIT 5;
 ```
 
@@ -437,18 +446,18 @@ SHOW TABLE STATUS LIKE 'wp_%';
 
 ```sql
 -- Get site options
-SELECT option_name, option_value 
-FROM wp_options 
+SELECT option_name, option_value
+FROM wp_options
 WHERE option_name IN ('blogname', 'blogdescription', 'admin_email');
 
 -- Find active plugins
-SELECT option_value 
-FROM wp_options 
+SELECT option_value
+FROM wp_options
 WHERE option_name = 'active_plugins';
 
 -- Get user information
-SELECT user_login, user_email, display_name 
-FROM wp_users 
+SELECT user_login, user_email, display_name
+FROM wp_users
 LIMIT 10;
 
 -- Post meta data
@@ -464,6 +473,7 @@ WHERE p.post_type = 'post' AND pm.meta_key = '_edit_last';
 
 1. **Start a Local site**: Make sure you have an active Local by Flywheel site running
 2. **Clone and build**:
+
    ```bash
    git clone https://github.com/verygoodplugins/mcp-local-wp.git
    cd mcp-local-wp
@@ -537,10 +547,13 @@ DEBUG=mcp-local-wp mcp-local-wp
 
 ## Security
 
-- **Read-only operations**: Only SELECT/SHOW/DESCRIBE/EXPLAIN are allowed
-- **Single statement**: Multiple statements in one call are blocked
-- **Local development**: Designed for local environments (Local by Flywheel)
-- **No external connections**: Prioritizes Unix socket connections when available
+`mysql_query` accepts one SELECT/SHOW/DESCRIBE/DESC/EXPLAIN statement. A tokenizer checks real SQL tokens using the connection's SQL mode. Executable MySQL/MariaDB comments, optimizer hints, file output, SELECT INTO, locking reads, advisory-lock functions, and EXPLAIN ANALYZE are rejected. Ordinary comments and semicolons in quoted values are supported.
+
+Every read runs in a database-enforced read-only transaction on a dedicated connection. Setup failures stop execution; failed cleanup discards the connection. `MYSQL_ALLOW_WRITES=true` exposes `mysql_write` on a separate connection; it never disables protection for `mysql_query`. Write statements permit INSERT/UPDATE/DELETE. UPDATE/DELETE require column comparisons to bound parameters in WHERE, optionally grouped with AND/OR; IN, BETWEEN and LIKE also support bound values. Bare placeholder and literal-only predicates are rejected. Schema operations and write subqueries remain blocked.
+
+For extra protection, configure a dedicated account with SELECT grants on the chosen database and no FILE or EXECUTE privileges. `MYSQL_USER` and `MYSQL_PASS` apply to auto-detected Local sites as well as manual connections. The server does not create users or change grants. Read-only transactions are not a sandbox for temporary tables or arbitrary native extensions; use least-privilege credentials for untrusted databases.
+
+This server supports local development, with Unix sockets when available and TCP for explicit connections. Report vulnerabilities privately through [GitHub Security Advisories](https://github.com/verygoodplugins/mcp-local-wp/security/advisories/new) or [support@verygoodplugins.com](mailto:support@verygoodplugins.com).
 
 ## Contributing
 

@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
 import mysql from 'mysql2/promise';
 import { MySQLClient } from '../src/mysql-client.js';

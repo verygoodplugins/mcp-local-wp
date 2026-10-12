@@ -119,7 +119,14 @@ export function validateReadSql(sql: string, params?: unknown[], mode?: SqlMode)
       throw new Error('Locking reads are not permitted.');
     }
     if (
-      ['GET_LOCK', 'RELEASE_LOCK', 'RELEASE_ALL_LOCKS', 'SERVICE_GET_READ_LOCKS', 'SERVICE_GET_WRITE_LOCKS', 'SERVICE_RELEASE_LOCKS'].includes(functionName) &&
+      [
+        'GET_LOCK',
+        'RELEASE_LOCK',
+        'RELEASE_ALL_LOCKS',
+        'SERVICE_GET_READ_LOCKS',
+        'SERVICE_GET_WRITE_LOCKS',
+        'SERVICE_RELEASE_LOCKS',
+      ].includes(functionName) &&
       tokens[i + 1]?.value === '('
     ) {
       throw new Error('Advisory lock functions are not permitted.');
@@ -131,19 +138,36 @@ export function validateReadSql(sql: string, params?: unknown[], mode?: SqlMode)
 /** Restrict write predicates to column comparisons with bound values, joined by AND/OR. */
 function validateWritePredicate(tokens: Token[]): void {
   let i = 0;
-  const invalid = () => { throw new Error('WHERE requires column comparisons to bound values, joined by AND/OR.'); };
+  const invalid = () => {
+    throw new Error('WHERE requires column comparisons to bound values, joined by AND/OR.');
+  };
   const identifier = () => {
     const token = tokens[i];
-    if (!token || !(token.kind === 'quoted' || (token.kind === 'word' && /^[A-Z_$]/.test(token.value) && !['TRUE', 'FALSE', 'NULL'].includes(token.value)))) invalid();
+    if (
+      !token ||
+      !(
+        token.kind === 'quoted' ||
+        (token.kind === 'word' &&
+          /^[A-Z_$]/.test(token.value) &&
+          !['TRUE', 'FALSE', 'NULL'].includes(token.value))
+      )
+    )
+      invalid();
     i++;
     if (tokens[i]?.value === '.') {
       i++;
       const column = tokens[i];
-      if (!column || !(column.kind === 'quoted' || (column.kind === 'word' && /^[A-Z_$]/.test(column.value)))) invalid();
+      if (
+        !column ||
+        !(column.kind === 'quoted' || (column.kind === 'word' && /^[A-Z_$]/.test(column.value)))
+      )
+        invalid();
       i++;
     }
   };
-  const parameter = () => { if (tokens[i++]?.kind !== 'parameter') invalid(); };
+  const parameter = () => {
+    if (tokens[i++]?.kind !== 'parameter') invalid();
+  };
   const predicate = (): void => {
     if (tokens[i]?.value === '(') {
       i++;
@@ -156,24 +180,29 @@ function validateWritePredicate(tokens: Token[]): void {
     if (operator === 'IN') {
       if (tokens[i++]?.value !== '(') invalid();
       parameter();
-      while (tokens[i]?.value === ',') { i++; parameter(); }
+      while (tokens[i]?.value === ',') {
+        i++;
+        parameter();
+      }
       if (tokens[i++]?.value !== ')') invalid();
     } else if (operator === 'BETWEEN') {
       parameter();
       if (tokens[i++]?.value !== 'AND') invalid();
       parameter();
     } else {
-      if (!['=', '<', '>', '!', 'LIKE'].includes(operator ?? '')) invalid();
-      if (['<', '>', '!'].includes(operator ?? '') && ['=', '>'].includes(tokens[i]?.value)) {
-        i++;
-        if (operator === '<' && tokens[i - 1]?.value === '=' && tokens[i]?.value === '>') i++;
-      }
+      let comparison = operator ?? '';
+      while (tokens[i]?.kind === 'symbol' && ['=', '<', '>'].includes(tokens[i].value))
+        comparison += tokens[i++].value;
+      if (!['=', '<', '>', '<=', '>=', '<>', '!=', '<=>', 'LIKE'].includes(comparison)) invalid();
       parameter();
     }
   };
   const expression = (): void => {
     predicate();
-    while (['AND', 'OR'].includes(tokens[i]?.value)) { i++; predicate(); }
+    while (['AND', 'OR'].includes(tokens[i]?.value)) {
+      i++;
+      predicate();
+    }
   };
   expression();
   if (i !== tokens.length) invalid();
