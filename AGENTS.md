@@ -26,6 +26,6 @@ This repository implements a local WordPress database MCP server. Node.js 24+ is
 
 Preserve GPL-3.0-or-later. Keep registry authentication files ignored and outside packages. Create regular PRs, use conventional titles, and use release-please for versions/tags. Shared workflows/configuration come from merged mcp-ecosystem main; change the source of truth first rather than introducing permanent downstream drift.
 
-The organization requires CI context `test`. The active repository ruleset `Database security checks` also requires `Database Security (mysql:8.0)` and `Database Security (mariadb:11.8)`. All three checks must pass before merging implementation or release PRs; do not remove or bypass these gates.
+For PR creation, hosted review, CI, and merge readiness, use the installed `babysit` skill (`~/.autovault/skills/babysit/SKILL.md`) as the canonical procedure.
 
-Creating release tags, publishing packages, or merging a release-please PR requires explicit user approval for that release. Prepare and verify the release PR first, then leave it unmerged for review. Ordinary implementation PRs may be merged within the approved task scope.
+Creating release tags, publishing packages, or merging a release-please PR requires explicit user approval for that release. Prepare and verify the release PR first, then leave it unmerged for review.
