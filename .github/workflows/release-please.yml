@@ -110,8 +110,63 @@ jobs:
           echo "$install_dir" >> "$GITHUB_PATH"
 
       - name: Publish to MCP Registry
+        timeout-minutes: 10
         run: |
+          set -euo pipefail
+          # Validate the exact identity that npm published and the registry will verify.
+          identity="$(node -e '
+            const fs = require("node:fs");
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            const server = JSON.parse(fs.readFileSync("server.json", "utf8"));
+            const npmPackages = (server.packages || []).filter(p => p.registryType === "npm");
+            const validName = typeof pkg.name === "string" && /^(@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/.test(pkg.name);
+            const validVersion = typeof pkg.version === "string" && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(pkg.version);
+            if (!validName || !validVersion || server.version !== pkg.version || npmPackages.length !== 1 || npmPackages[0].identifier !== pkg.name || npmPackages[0].version !== pkg.version) {
+              throw new Error("package.json and server.json must identify the same single npm package and exact version");
+            }
+            process.stdout.write(pkg.name + "\n" + pkg.version);
+          ')"
+          package_name="$(printf '%s\n' "$identity" | sed -n '1p')"
+          package_version="$(printf '%s\n' "$identity" | sed -n '2p')"
+
+          # npm may accept publication before its exact version can be read.
+          npm_error="$RUNNER_TEMP/mcp-npm-view-error.log"
+          for attempt in $(seq 1 20); do
+            if npm_version="$(npm view "$package_name@$package_version" version --json --registry=https://registry.npmjs.org --prefer-online --fetch-retries=0 --fetch-timeout=10000 2>"$npm_error")"; then
+              node -e 'if (JSON.parse(process.argv[1]) !== process.argv[2]) throw new Error("npm returned an unexpected version")' "$npm_version" "$package_version"
+              break
+            fi
+            cat "$npm_error" >&2
+            if ! grep -Eq 'npm (error|ERR!) code E404' "$npm_error"; then
+              echo "npm version lookup failed for a reason other than propagation" >&2
+              exit 1
+            fi
+            if [ "$attempt" -eq 20 ]; then
+              echo "npm version was not visible after 20 attempts" >&2
+              exit 1
+            fi
+            sleep 15
+          done
+
           mcp-publisher login github-oidc
-          mcp-publisher publish
+          # Retry only a definite validation rejection for this exact package
+          # and version. Never retry ambiguous failures that may have published.
+          for attempt in $(seq 1 5); do
+            if publish_output="$(mcp-publisher publish 2>&1)"; then
+              printf '%s\n' "$publish_output"
+              exit 0
+            fi
+            printf '%s\n' "$publish_output" >&2
+            if ! grep -Fq 'server returned status 400' <<< "$publish_output" ||
+               ! grep -Fq 'registry validation failed for package' <<< "$publish_output" ||
+               ! grep -Fq "NPM package '$package_name' exists, but version '$package_version' was not found (status: 404)" <<< "$publish_output"; then
+              exit 1
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              echo "MCP Registry still cannot see the npm version after 5 attempts" >&2
+              exit 1
+            fi
+            sleep 15
+          done
         env:
           MCP_REGISTRY_URL: https://registry.modelcontextprotocol.io
