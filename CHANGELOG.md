@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.1](https://github.com/verygoodplugins/mcp-local-wp/compare/v2.0.0...v2.0.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* **ci:** forward Dependabot app credentials ([#47](https://github.com/verygoodplugins/mcp-local-wp/issues/47)) ([b2b36d6](https://github.com/verygoodplugins/mcp-local-wp/commit/b2b36d6956cc0661f03fc6c7af88c1f33161ac72))
+* **release:** wait for npm registry propagation ([#45](https://github.com/verygoodplugins/mcp-local-wp/issues/45)) ([932f771](https://github.com/verygoodplugins/mcp-local-wp/commit/932f771dad4cdd2bc3507a3af794f286753be51f))
+
 ## [2.0.0](https://github.com/verygoodplugins/mcp-local-wp/compare/v1.1.0...v2.0.0) (2026-10-12)
 
 
